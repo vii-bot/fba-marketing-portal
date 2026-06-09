@@ -1,0 +1,448 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Better Auth required models
+// ──────────────────────────────────────────────────────────────
+
+model User {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  emailVerified   Boolean   @default(false)
+  image           String?
+  role            String    @default("employee")
+  department      String?
+  jobTitle        String?
+  profilePicture  String?
+  bannerImage     String?
+  discordUsername String?
+  profileComplete Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+  employee Employee?
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────
+// HR — Employee
+// ──────────────────────────────────────────────────────────────
+
+model Employee {
+  id              String    @id @default(cuid())
+  userId          String?   @unique
+  name            String
+  email           String    @unique
+  role            String
+  department      String    @default("X")
+  startDate       DateTime?
+  status          String    @default("Active")
+  notes           String?
+  discordUsername String?
+  contract        String?   // URL to uploaded PDF
+  profilePicture  String?
+  bannerImage     String?
+  schedule        Json?
+  access          Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user               User?               @relation(fields: [userId], references: [id])
+  strikes            Strike[]
+  attendanceRequests AttendanceRequest[]
+  inviteToken        InviteToken?
+}
+
+// ──────────────────────────────────────────────────────────────
+// SSO Invite System
+// ──────────────────────────────────────────────────────────────
+
+model InviteToken {
+  id         String    @id @default(cuid())
+  token      String    @unique
+  email      String    @unique
+  employeeId String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+// ──────────────────────────────────────────────────────────────
+// Strike System
+// ──────────────────────────────────────────────────────────────
+
+model Strike {
+  id           String   @id @default(cuid())
+  strikeCode   String   @unique
+  name         String
+  email        String
+  role         String
+  department   String   @default("X")
+  type         String
+  level        String
+  incidentDate DateTime
+  submitter    String
+  reason       String
+  impact       String?
+  action       String?
+  evidence     String?
+  sopReference String?  // SOP ID referenced
+  status       String   @default("Active")
+  notes        String?
+  requireAck   Boolean  @default(false)
+  quarter      String
+  year         Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  appeal     Appeal?
+}
+
+model Appeal {
+  id          String   @id @default(cuid())
+  strikeId    String   @unique
+  email       String
+  explanation String
+  evidence    String?
+  status      String   @default("Pending")
+  reviewer    String?
+  reviewNotes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  strike Strike @relation(fields: [strikeId], references: [id], onDelete: Cascade)
+}
+
+// ──────────────────────────────────────────────────────────────
+// Attendance
+// ──────────────────────────────────────────────────────────────
+
+model AttendanceRequest {
+  id           String    @id @default(cuid())
+  requestCode  String    @unique
+  type         String
+  name         String
+  email        String
+  role         String?
+  department   String    @default("X")
+  date         DateTime
+  hours        Float?
+  reason       String
+  tasks        String?
+  deliverables String?
+  coverage     String?
+  codes        String?
+  notes        String?
+  makeupDate   DateTime?
+  missedDate   DateTime?
+  leaveType    String?
+  endDate      DateTime?
+  manager      String?
+  status       String    @default("Pending")
+  reviewer     String?
+  reviewNotes  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Creator Management
+// ──────────────────────────────────────────────────────────────
+
+model Creator {
+  id                  String   @id @default(cuid())
+  creatorCode         String   @unique
+  creatorName         String
+  status              String   @default("Active")
+  priority            String   @default("Medium")
+  needsMedia          Boolean  @default(false)
+  needsReview         Boolean  @default(false)
+  assignedPageRunners String[]
+  uploadsFolder       String?
+  mediaFolder         String?
+  overview            String?
+  niche               Json?
+  assets              Json?
+  accounts            Json?
+  strategy            Json?
+  archived            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  highlights Highlight[]
+}
+
+model Highlight {
+  id              String   @id @default(cuid())
+  creatorId       String
+  platform        String   @default("X")
+  accountUsername String?
+  postLink        String?
+  likes           Int      @default(0)
+  views           Int      @default(0)
+  comments        Int      @default(0)
+  reposts         Int      @default(0)
+  bookmarks       Int      @default(0)
+  notes           String?
+  submittedBy     String?
+  createdAt       DateTime @default(now())
+
+  creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+// ──────────────────────────────────────────────────────────────
+// LMS — SOP Management
+// ──────────────────────────────────────────────────────────────
+
+model SOP {
+  id               String   @id @default(cuid())
+  title            String
+  category         String
+  content          String   @db.Text
+  contentType      String   @default("SOP") // SOP | Course
+  tier             String   // Introductory | Intermediate | Advanced | Upskill
+  version          Int      @default(1)
+  isRequired       Boolean  @default(true)
+  isArchived       Boolean  @default(false)
+  department       String   @default("All Departments")
+  roles            String[] @default([]) // empty = visible to all roles in department
+  status           String   @default("Published") // Draft | Published
+  blocks           Json?    // structured Notion-style block content; null = legacy text-only SOP
+  estimatedMinutes Int?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  acknowledgements SOPAcknowledgement[]
+  assessment       Assessment?
+}
+
+model SOPAcknowledgement {
+  id             String   @id @default(cuid())
+  sopId          String
+  email          String
+  version        Int
+  acknowledgedAt DateTime @default(now())
+
+  sop SOP @relation(fields: [sopId], references: [id], onDelete: Cascade)
+
+  @@unique([sopId, email, version])
+}
+
+// Tracks "viewed" distinctly from "acknowledged" (bugs.md §6) without disturbing
+// the acknowledgement model's existing semantics (a row there always = acknowledged).
+model SOPView {
+  id        String   @id @default(cuid())
+  sopId     String
+  email     String
+  viewedAt  DateTime @default(now())
+
+  @@unique([sopId, email])
+}
+
+// ──────────────────────────────────────────────────────────────
+// LMS — Module Acknowledgement (training pages)
+// ──────────────────────────────────────────────────────────────
+
+model ModuleAcknowledgement {
+  id             String   @id @default(cuid())
+  email          String
+  moduleId       String
+  version        Int      @default(1)
+  acknowledgedAt DateTime @default(now())
+
+  @@unique([email, moduleId])
+}
+
+// ──────────────────────────────────────────────────────────────
+// LMS — Assessments
+// ──────────────────────────────────────────────────────────────
+
+model Assessment {
+  id           String   @id @default(cuid())
+  sopId        String?  @unique
+  moduleId     String?
+  title        String
+  tier         String
+  passingScore Int      @default(70)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sop       SOP?       @relation(fields: [sopId], references: [id])
+  questions Question[]
+  attempts  AssessmentAttempt[]
+}
+
+model Question {
+  id            String  @id @default(cuid())
+  assessmentId  String
+  type          String  // MultipleChoice | TrueFalse | Scenario | ShortAnswer
+  text          String
+  options       Json?   // ["A", "B", "C", "D"] for MCQ
+  correctAnswer String? // null for ShortAnswer
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+}
+
+model AssessmentAttempt {
+  id           String   @id @default(cuid())
+  assessmentId String
+  email        String
+  answers      Json
+  score        Int
+  passed       Boolean
+  completedAt  DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Audit Log
+// ──────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actor      String   // email of who performed the action
+  action     String   // e.g. "strike.create", "sop.update", "attendance.approve"
+  entityType String   // "Strike" | "SOP" | "AttendanceRequest" | etc.
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────
+// Notifications
+// ──────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  email     String
+  type      String   // NewSOP | SOPUpdated | AssessmentRequired | CertificationEarned | StrikeIssued
+  message   String
+  href      String?
+  metadata  Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────
+// Legacy LMS (kept for backward-compat, superseded by ModuleAcknowledgement)
+// ──────────────────────────────────────────────────────────────
+
+model LearningProgress {
+  id          String   @id @default(cuid())
+  email       String
+  pageId      String
+  completedAt DateTime @default(now())
+
+  @@unique([email, pageId])
+}
+
+model Quiz {
+  id          String   @id @default(cuid())
+  quizId      String   @unique
+  milestoneId String
+  questions   Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  results QuizResult[]
+}
+
+model QuizResult {
+  id            String   @id @default(cuid())
+  resultId      String   @unique
+  quizId        String
+  milestoneId   String
+  employeeEmail String
+  score         Float
+  answers       Json?
+  submittedAt   DateTime @default(now())
+
+  quiz Quiz @relation(fields: [quizId], references: [quizId])
+}
+
+model PracticalMilestone {
+  id            String   @id @default(cuid())
+  practicalId   String   @unique
+  employeeEmail String
+  milestoneId   String
+  status        String   @default("Not Started")
+  notes         String?
+  reviewer      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([employeeEmail, milestoneId])
+}
+
+model Readiness {
+  id            String   @id @default(cuid())
+  readinessId   String   @unique
+  employeeEmail String
+  milestoneId   String
+  status        String   @default("Not Started")
+  notes         String?
+  reviewer      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([employeeEmail, milestoneId])
+}

@@ -32,6 +32,7 @@ add those too.
 | `NEXT_PUBLIC_APP_URL` | **Yes** | The production URL, e.g. `https://portal.fatbearagency.com`. Used by `next.config.ts` to allow server actions from your real domain, and by `lib/auth.ts` for Better Auth's trusted origins. |
 | `BETTER_AUTH_URL` | **Yes** | Same production URL. Used by [app/api/invite/route.ts](app/api/invite/route.ts) to build the invite link an admin sends to a new hire (`{BETTER_AUTH_URL}/accept-invite?token=...`). If this is missing, invite links will point at `localhost`. |
 | `ANTHROPIC_API_KEY` | Optional | Powers the SOP Builder's "AI Generate" draft feature ([lib/ai/generate-draft.ts](lib/ai/generate-draft.ts)). If unset, that feature falls back to a built-in mock generator — nothing breaks, the feature just produces a simpler placeholder draft. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional | Enables "Sign in with Google" on `/login` via Better Auth ([lib/auth.ts](lib/auth.ts)). OAuth 2.0 Web application credentials from Google Cloud Console, with redirect URI `{BETTER_AUTH_URL}/api/auth/callback/google`. If unset, the Google button on `/login` will error when clicked but email/password sign-in still works. |
 
 ### 1.2 Database connection
 

@@ -100,6 +100,8 @@ model Employee {
   user               User?               @relation(fields: [userId], references: [id])
   strikes            Strike[]
   attendanceRequests AttendanceRequest[]
+  employeeRequests   EmployeeRequest[]
+  tasks              Task[]
   inviteToken        InviteToken?
 }
 
@@ -202,6 +204,87 @@ model AttendanceRequest {
   employee   Employee? @relation(fields: [employeeId], references: [id])
 }
 
+// Generic employee-facing request system (bugs.md Phase 5). The `type`
+// field is open-ended — only the types listed in lib/utils.ts'
+// ACTIVE_REQUEST_TYPES are selectable when submitting new requests, but
+// the schema itself does not constrain `type` so future request types
+// (Payslip, Leave, HR, Payroll, Equipment, etc.) can be enabled later
+// without a migration.
+model EmployeeRequest {
+  id          String    @id @default(cuid())
+  requestCode String    @unique
+  type        String
+  name        String
+  email       String
+  role        String?
+  department  String    @default("X")
+  reason      String
+  dateNeeded  DateTime?
+  notes       String?
+  status      String    @default("Pending")
+  reviewer    String?
+  reviewNotes String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+}
+
+// FBA Contractor Change Request — internal replacement for the Google Form
+// (bugs.md Phase 6). Type-specific fields live in `details` (JSON);
+// fields needed for the admin dashboard table are hoisted to top-level
+// columns so they're directly queryable/sortable regardless of requestType.
+model ContractorChangeRequest {
+  id                    String    @id @default(cuid())
+  requestCode           String    @unique
+  requesterEmail        String
+  requesterName         String
+  department            String
+  requestType           String
+  contractorName        String?
+  effectiveDate         DateTime? // Last Working Day | Effective Date | Start Date, depending on requestType
+  effectiveDateSelected DateTime? // raw date selected before pay-period adjustment (Compensation Adjustment only)
+  compensationType      String?
+  compensationAmount    Float?
+  details               Json
+  status                String    @default("Pending")
+  reviewer              String?
+  reviewNotes           String?
+  statusHistory         Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────
+// Taskboard / Time Tracking (bugs.md Phase 4)
+// ──────────────────────────────────────────────────────────────
+
+// Daily task log for time tracking. `date` is the employee's local "shift
+// day" (stored at UTC midnight) so the taskboard and end-of-shift export
+// line up with what the employee sees regardless of server timezone.
+// `startTime`/`finishTime`/`totalMinutes` are set automatically as `status`
+// moves Pending -> In Progress -> Finished (see /api/tasks).
+model Task {
+  id           String    @id @default(cuid())
+  email        String
+  name         String
+  department   String    @default("X")
+  date         DateTime
+  taskName     String
+  category     String
+  notes        String?
+  status       String    @default("Pending") // Pending | In Progress | Finished
+  startTime    DateTime?
+  finishTime   DateTime?
+  totalMinutes Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+}
+
 // ──────────────────────────────────────────────────────────────
 // Creator Management
 // ──────────────────────────────────────────────────────────────
@@ -217,6 +300,7 @@ model Creator {
   assignedPageRunners String[]
   uploadsFolder       String?
   mediaFolder         String?
+  signedPlatforms     String[] @default([])
   overview            String?
   niche               Json?
   assets              Json?
@@ -226,7 +310,9 @@ model Creator {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  highlights Highlight[]
+  highlights     Highlight[]
+  teamNotes      TeamNote[]
+  creatorReports CreatorReport[]
 }
 
 model Highlight {
@@ -243,6 +329,55 @@ model Highlight {
   notes           String?
   submittedBy     String?
   createdAt       DateTime @default(now())
+
+  creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+// Team Notes (bugs.md Phase 11) — a note log / activity thread attached to
+// each creator profile. Separate from Creator.strategy.notes (the legacy
+// single free-text field, kept for historical display).
+model TeamNote {
+  id          String    @id @default(cuid())
+  creatorId   String
+  content     String    @db.Text
+  authorEmail String
+  authorName  String
+  editedAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+// Creator Reports (bugs.md Phase 10) — weekly per-account reports submitted
+// by Page Runners, reviewed by Account Managers, and rolled up under each
+// creator. `creatorCode`/`creatorName`/`department` are hoisted from Creator
+// at submission time so the admin dashboard can filter/export without joins.
+model CreatorReport {
+  id              String    @id @default(cuid())
+  creatorId       String
+  creatorCode     String
+  creatorName     String
+  accountUsername String
+  department      String
+  reportType      String // Internal Report | Creator Report
+  status          String    @default("Submitted") // Draft | Submitted | Needs Revision | Approved for Creator | Sent to Creator | Archived
+  followerCount   Int
+  followerChange  String?
+  summary         String    @db.Text
+  highlights      Json? // [{ performance, link, notes }]
+  whatsWorking    String?   @db.Text
+  actionItems     String?   @db.Text
+  additionalNotes String?   @db.Text
+  links           Json? // string[]
+  relayed         Boolean   @default(false)
+  reviewerNotes   String?   @db.Text
+  submittedBy     String
+  submittedByName String
+  submittedAt     DateTime  @default(now())
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
 }
@@ -266,12 +401,35 @@ model SOP {
   status           String   @default("Published") // Draft | Published
   blocks           Json?    // structured Notion-style block content; null = legacy text-only SOP
   estimatedMinutes Int?
+
+  // Acknowledgement deadline (bugs.md Phase 3)
+  deadlineType  String    @default("None") // None | Fixed | Relative
+  deadlineDate  DateTime?                   // used when deadlineType = Fixed
+  deadlineDays  Int?                        // used when deadlineType = Relative
+  deadlineBasis String?                     // Publish | Assignment — used when deadlineType = Relative
+
   createdBy        String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   acknowledgements SOPAcknowledgement[]
+  exemptions       SOPExemption[]
   assessment       Assessment?
+}
+
+// Per-employee bypass of a SOP's acknowledgement deadline (bugs.md Phase 3) —
+// e.g. for new hires who need more time. Does not affect other employees.
+model SOPExemption {
+  id        String   @id @default(cuid())
+  sopId     String
+  email     String
+  reason    String?
+  grantedBy String
+  createdAt DateTime @default(now())
+
+  sop SOP @relation(fields: [sopId], references: [id], onDelete: Cascade)
+
+  @@unique([sopId, email])
 }
 
 model SOPAcknowledgement {
@@ -445,4 +603,44 @@ model Readiness {
   updatedAt     DateTime @updatedAt
 
   @@unique([employeeEmail, milestoneId])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Internal Documentation CMS (bugs.md Phase 13)
+// ──────────────────────────────────────────────────────────────
+
+// Admin/developer-facing documentation pages — separate from the
+// employee-facing SOP/Resource Portal system, but reuses the same
+// Notion-style block content format (lib/sop-blocks.ts) via `blocks`.
+// `priority`/`itemStatus`/`changeType`/`featureArea`/`targetDate` are hoisted,
+// category-specific fields used by the Changelog, Known Issues, and Roadmap
+// categories so the CMS can filter/sort without parsing blocks.
+model DocPage {
+  id         String   @id @default(cuid())
+  title      String
+  slug       String   @unique
+  category   String // App Overview | System Architecture | Authentication & Access | Feature Documentation | Workflow Documentation | Database & Data Models | API & Backend Notes | Changelog | Known Issues | Roadmap
+  tags       String[] @default([])
+  status     String   @default("Draft") // Draft | Published | Archived
+  visibility String[] @default([]) // role names granted read access in addition to Admin/Executive; empty = Admin/Executive only
+
+  blocks Json? // SOPBlock[] — main content body (lib/sop-blocks.ts)
+
+  // Category-specific structured fields
+  priority    String? // Low | Medium | High | Urgent (Known Issues, Roadmap)
+  itemStatus  String? // Open | In Progress | Resolved (Known Issues) or Planned | In Progress | Completed | On Hold (Roadmap)
+  changeType  String? // Added | Changed | Fixed | Removed | Planned (Changelog)
+  featureArea String? // affected feature/module (Changelog, Known Issues, Roadmap, Feature Documentation)
+  targetDate  DateTime? // optional target timeline (Roadmap)
+
+  createdBy     String
+  createdByName String
+  updatedBy     String?
+  updatedByName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([status])
 }

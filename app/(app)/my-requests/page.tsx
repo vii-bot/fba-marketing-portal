@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/utils";
+import { EmailUsernameInput } from "@/components/ui/EmailUsernameInput";
 import Link from "next/link";
 
 interface Request {
@@ -28,10 +29,8 @@ export default function MyRequestsPage() {
   const now = new Date();
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay()); weekStart.setHours(0,0,0,0);
   const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const otUsed    = data?.filter(r => r.type === "OT" && ["Pending","Approved"].includes(r.status) && new Date(r.date) >= weekStart && new Date(r.date) < weekEnd).reduce((s, r) => s + (r.hours ?? 0), 0) ?? 0;
-  const offsetUsed = data?.filter(r => r.type === "Offset" && ["Pending","Approved"].includes(r.status) && new Date(r.createdAt) >= monthStart).length ?? 0;
 
   const typeColor: Record<string, string> = {
     OT: "text-indigo-400", WeekendOT: "text-sky-400", DayOff: "text-emerald-400", Offset: "text-purple-400"
@@ -42,14 +41,16 @@ export default function MyRequestsPage() {
       <div className="module-header rounded-2xl p-8 mb-6">
         <p className="text-xs uppercase tracking-wider text-indigo-400 mb-2">Attendance & Requests</p>
         <h2 className="font-bold text-slate-100 mb-1" style={{ fontSize: 23 }}>My Requests</h2>
-        <p className="text-sm text-slate-400 opacity-70">Your request history, OT balance, and offset usage.</p>
+        <p className="text-sm text-slate-400 opacity-70">Your request history and OT balance.</p>
       </div>
 
       {/* Lookup */}
       <div className="card rounded-xl p-6 mb-6">
         <p className="text-sm text-slate-300 mb-4">Enter your email to load your attendance history.</p>
         <div className="flex flex-wrap gap-3">
-          <input className="sf-input flex-1 min-w-[200px]" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" onKeyDown={e => e.key === "Enter" && load()} />
+          <div className="flex-1 min-w-[200px]">
+            <EmailUsernameInput value={email} onChange={setEmail} onKeyDown={e => e.key === "Enter" && load()} />
+          </div>
           <button onClick={load} disabled={loading} className="bg-indigo-600 hover:bg-indigo-500 transition text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-60">
             {loading ? "Loading…" : "Load My Records"}
           </button>
@@ -70,13 +71,6 @@ export default function MyRequestsPage() {
               <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.min(100, (otUsed / 6) * 100)}%` }} />
             </div>
             <p className="text-xs text-slate-500 mt-1">{Math.max(0, 6 - otUsed)}h remaining · resets Sunday</p>
-          </div>
-
-          {/* Offset Stats */}
-          <div className="card rounded-xl p-6">
-            <h4 className="font-semibold text-slate-200 text-sm mb-4">My Offset Usage <span className="text-xs text-slate-500 font-normal">(this month)</span></h4>
-            <p className="text-sm text-slate-300">{offsetUsed} / 2 offsets used this month</p>
-            <p className="text-xs text-slate-500 mt-1">{Math.max(0, 2 - offsetUsed)} remaining</p>
           </div>
 
           {/* Requests table */}

@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateId, getQuarter } from "@/lib/utils";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -64,6 +65,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  await logAudit(session.user.email, "strike.create", "Strike", strike.id, {
+    name: strike.name, type: strike.type, level: strike.level,
+  });
+
   return NextResponse.json(strike, { status: 201 });
 }
 
@@ -76,11 +81,21 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, ...data } = body;
 
+  const existing = await prisma.strike.findUnique({ where: { id } });
+
   const strike = await prisma.strike.update({
     where: { id },
     data: {
       ...data,
       ...(data.incidentDate && { incidentDate: new Date(data.incidentDate) }),
+    },
+  });
+
+  await logAudit(session.user.email, "strike.update", "Strike", strike.id, {
+    name: strike.name,
+    changes: {
+      ...(existing && existing.status !== strike.status && { status: { from: existing.status, to: strike.status } }),
+      ...(existing && existing.level !== strike.level && { level: { from: existing.level, to: strike.level } }),
     },
   });
 
@@ -94,6 +109,11 @@ export async function DELETE(req: NextRequest) {
   }
 
   const { id } = await req.json();
-  await prisma.strike.delete({ where: { id } });
+  const strike = await prisma.strike.delete({ where: { id } });
+
+  await logAudit(session.user.email, "strike.delete", "Strike", strike.id, {
+    name: strike.name, type: strike.type, level: strike.level,
+  });
+
   return NextResponse.json({ success: true });
 }

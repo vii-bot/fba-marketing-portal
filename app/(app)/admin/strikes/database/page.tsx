@@ -90,7 +90,7 @@ export default function StrikeDatabasePage() {
           </select>
           <select className="db-filter" value={yearF} onChange={e => setYearF(e.target.value)}>
             <option value="">All Years</option>
-            {["2026","2025","2027"].map(y => <option key={y}>{y}</option>)}
+            {["2025","2026","2027"].map(y => <option key={y}>{y}</option>)}
           </select>
         </div>
       </div>

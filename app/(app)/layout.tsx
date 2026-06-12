@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import Sidebar from "@/components/layout/Sidebar";
+import SidebarClient from "@/components/layout/SidebarClient";
+import IdleSessionGuard from "@/components/auth/IdleSessionGuard";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -11,7 +12,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <IdleSessionGuard />
+      <SidebarClient />
       <main
         className="flex-1 overflow-y-auto p-4 lg:p-8 flex flex-col"
         style={{ minHeight: "100vh" }}

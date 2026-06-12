@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -68,6 +69,10 @@ export async function PATCH(req: NextRequest) {
   } else if (status === "Rejected") {
     await prisma.strike.update({ where: { id: appeal.strikeId }, data: { status: "Active" } });
   }
+
+  await logAudit(session.user.email, "appeal.review", "Appeal", appeal.id, {
+    email: appeal.email, status, reviewer,
+  });
 
   return NextResponse.json(appeal);
 }

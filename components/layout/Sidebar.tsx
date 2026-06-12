@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Calendar, Users2, BookOpen, ShieldCheck,
-  GraduationCap, LogOut, User, X, Menu, Bell,
+  GraduationCap, LogOut, User, X, Menu, Bell, FileText, Inbox, Briefcase, ListTodo, Library,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, MANAGER_ROLES } from "@/lib/utils";
+import { canManageContractors, canManageCreatorReports, canAccessInternalDocs } from "@/lib/permissions";
 import { signOut, useSession } from "@/lib/auth-client";
 import type { SessionUser } from "@/lib/auth-client";
 import { useState, useEffect } from "react";
@@ -21,8 +22,10 @@ type NavItem = {
 const MAIN_NAV: NavItem[] = [
   { href: "/dashboard",       label: "My Dashboard",    icon: <LayoutDashboard size={16} /> },
   { href: "/schedule",        label: "My Schedule",     icon: <Calendar size={16} /> },
+  { href: "/tasks",           label: "My Taskboard",    icon: <ListTodo size={16} /> },
   { href: "/my-creators",     label: "My Creators",     icon: <Users2 size={16} /> },
   { href: "/resource-portal", label: "Resource Portal", icon: <BookOpen size={16} /> },
+  { href: "/requests",        label: "My Requests",     icon: <FileText size={16} /> },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -30,7 +33,7 @@ const ADMIN_NAV: NavItem[] = [
     href: "/admin",
     label: "Admin Dashboard",
     icon: <ShieldCheck size={16} />,
-    match: (p) => p === "/admin" || (p.startsWith("/admin/") && !p.startsWith("/admin/lms")),
+    match: (p) => p === "/admin" || (p.startsWith("/admin/") && !p.startsWith("/admin/lms") && !p.startsWith("/admin/requests") && !p.startsWith("/admin/contractor-requests") && !p.startsWith("/admin/tasks") && !p.startsWith("/admin/creator-reports") && !p.startsWith("/admin/internal-docs")),
   },
   {
     href: "/admin/lms",
@@ -38,7 +41,62 @@ const ADMIN_NAV: NavItem[] = [
     icon: <GraduationCap size={16} />,
     match: (p) => p.startsWith("/admin/lms"),
   },
+  {
+    href: "/admin/requests",
+    label: "Employee Requests",
+    icon: <Inbox size={16} />,
+    match: (p) => p.startsWith("/admin/requests"),
+  },
+  {
+    href: "/admin/tasks",
+    label: "Taskboard",
+    icon: <ListTodo size={16} />,
+    match: (p) => p.startsWith("/admin/tasks"),
+  },
 ];
+
+// Department Heads/Managers/Account Managers don't get the full admin
+// dashboard — just a scoped view of their own department's employees.
+const DEPT_MANAGER_NAV: NavItem[] = [
+  {
+    href: "/admin/employees",
+    label: "Employee Database",
+    icon: <Users2 size={16} />,
+    match: (p) => p.startsWith("/admin/employees"),
+  },
+];
+
+// Shown to anyone canManageContractors() authorizes (Admin, Executive,
+// Department Head/Manager, Account Manager, TA/Payroll Manager) — added
+// separately since "Marketing Executive" and "TA/Payroll Manager" fall
+// outside both ADMIN_NAV and DEPT_MANAGER_NAV's local role checks below.
+const CONTRACTOR_REQUESTS_NAV: NavItem = {
+  href: "/admin/contractor-requests",
+  label: "Contractor Requests",
+  icon: <Briefcase size={16} />,
+  match: (p) => p.startsWith("/admin/contractor-requests"),
+};
+
+// Shown to anyone canManageCreatorReports() authorizes (Admin, Executive,
+// Department Head/Manager, Account Manager) — added separately for the same
+// reason as CONTRACTOR_REQUESTS_NAV above.
+const CREATOR_REPORTS_NAV: NavItem = {
+  href: "/admin/creator-reports",
+  label: "Creator Reports",
+  icon: <FileText size={16} />,
+  match: (p) => p.startsWith("/admin/creator-reports"),
+};
+
+// Shown to anyone canAccessInternalDocs() authorizes (Admin, Executive,
+// Department Head/Manager/Account Manager — the latter only see pages
+// explicitly granted to their role) — added separately for the same reason
+// as CONTRACTOR_REQUESTS_NAV above.
+const INTERNAL_DOCS_NAV: NavItem = {
+  href: "/admin/internal-docs",
+  label: "Internal Documentation",
+  icon: <Library size={16} />,
+  match: (p) => p.startsWith("/admin/internal-docs"),
+};
 
 function NavLink({
   item,
@@ -69,11 +127,15 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
   const { data: session } = useSession();
-  const user = session?.user as SessionUser | undefined;
+  const user = session?.user as (SessionUser & { department?: string | null }) | undefined;
   const [open, setOpen]     = useState(false);
   const [unread, setUnread] = useState(0);
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin      = user?.role === "admin";
+  const isDeptManager = user?.role ? MANAGER_ROLES.includes(user.role) : false;
+  const canAccessContractorRequests = user ? canManageContractors({ role: user.role, department: user.department, email: user.email }) : false;
+  const canAccessCreatorReports = user ? canManageCreatorReports({ role: user.role, department: user.department, email: user.email }) : false;
+  const canAccessDocs = user ? canAccessInternalDocs({ role: user.role, department: user.department, email: user.email }) : false;
   const close   = () => setOpen(false);
 
   useEffect(() => {
@@ -98,74 +160,82 @@ export default function Sidebar() {
 
       <aside
         className={cn(
-          "sidebar fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-40 w-64 flex flex-col shrink-0 overflow-y-auto transition-transform",
+          "sidebar fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-40 w-64 flex flex-col shrink-0 transition-transform",
           open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
         style={{ background: "var(--bg-secondary)" }}
       >
         {/* Logo */}
         <div className="p-6 border-b border-slate-700/50">
-          <h1 className="text-lg font-bold text-slate-100">Fatbear Agency</h1>
-          <p className="text-xs text-slate-400 opacity-60">Marketing Portal</p>
+          <h1 className="text-lg font-bold text-slate-100">FBA Marketing Portal</h1>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-0.5 text-sm flex flex-col">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-0.5 text-sm flex flex-col">
           {MAIN_NAV.map(item => (
             <NavLink key={item.href} item={item} pathname={pathname} onClose={close} />
           ))}
 
-          {isAdmin && (
+          {(isAdmin || isDeptManager || canAccessContractorRequests || canAccessCreatorReports || canAccessDocs) && (
             <>
               <div className="pt-3 pb-1 px-3">
                 <p className="text-xs uppercase tracking-widest text-slate-600 font-semibold">Admin</p>
               </div>
-              {ADMIN_NAV.map(item => (
+              {(isAdmin ? ADMIN_NAV : isDeptManager ? DEPT_MANAGER_NAV : []).map(item => (
                 <NavLink key={item.href} item={item} pathname={pathname} onClose={close} />
               ))}
+              {canAccessContractorRequests && (
+                <NavLink item={CONTRACTOR_REQUESTS_NAV} pathname={pathname} onClose={close} />
+              )}
+              {canAccessCreatorReports && (
+                <NavLink item={CREATOR_REPORTS_NAV} pathname={pathname} onClose={close} />
+              )}
+              {canAccessDocs && (
+                <NavLink item={INTERNAL_DOCS_NAV} pathname={pathname} onClose={close} />
+              )}
             </>
           )}
-
-          {/* Account section */}
-          <div className="mt-auto border-t border-slate-700/50 pt-2">
-            <Link
-              href="/notifications"
-              onClick={close}
-              className={cn("nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 justify-between", pathname === "/notifications" && "active")}
-            >
-              <div className="flex items-center gap-3">
-                <Bell size={15} />
-                Notifications
-              </div>
-              {unread > 0 && (
-                <span className="bg-indigo-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0">
-                  {unread > 9 ? "9+" : unread}
-                </span>
-              )}
-            </Link>
-
-            <Link
-              href="/profile"
-              onClick={close}
-              className={cn("nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300", pathname === "/profile" && "active")}
-            >
-              <div className="w-5 h-5 rounded-full bg-indigo-600/40 border border-indigo-500/40 flex items-center justify-center shrink-0">
-                <User size={10} className="text-indigo-300" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-200 truncate">{user?.name ?? "—"}</p>
-                <p className="text-xs text-slate-600 truncate capitalize">{user?.role?.replace(/-/g, " ") ?? ""}</p>
-              </div>
-            </Link>
-
-            <button
-              onClick={handleSignOut}
-              className="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-rose-400 text-sm"
-            >
-              <LogOut size={15} /> Logout
-            </button>
-          </div>
         </nav>
+
+        {/* Account section - pinned to bottom left */}
+        <div className="mt-auto border-t border-slate-700/50 p-3 space-y-0.5 text-sm shrink-0">
+          <Link
+            href="/notifications"
+            onClick={close}
+            className={cn("nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 justify-between", pathname === "/notifications" && "active")}
+          >
+            <div className="flex items-center gap-3">
+              <Bell size={15} />
+              Notifications
+            </div>
+            {unread > 0 && (
+              <span className="bg-indigo-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0">
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
+          </Link>
+
+          <Link
+            href="/profile"
+            onClick={close}
+            className={cn("nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300", pathname === "/profile" && "active")}
+          >
+            <div className="w-5 h-5 rounded-full bg-indigo-600/40 border border-indigo-500/40 flex items-center justify-center shrink-0">
+              <User size={10} className="text-indigo-300" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-200 truncate">{user?.name ?? "—"}</p>
+              <p className="text-xs text-slate-600 truncate capitalize">{user?.role?.replace(/-/g, " ") ?? ""}</p>
+            </div>
+          </Link>
+
+          <button
+            onClick={handleSignOut}
+            className="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-400 hover:text-rose-400 text-sm"
+          >
+            <LogOut size={15} /> Logout
+          </button>
+        </div>
       </aside>
     </>
   );

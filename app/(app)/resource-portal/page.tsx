@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canViewSOP } from "@/lib/permissions";
+import { getSOPDeadline } from "@/lib/sop-deadlines";
 import {
   TIER_COLORS, TIER_BADGES, TIER_PREREQUISITES,
   LMS_TIERS, type LmsTier,
@@ -28,9 +29,11 @@ export default async function ResourcePortalPage() {
   const isSuperAdmin = (session!.user as any).role === "admin";
   const me = session!.user as any;
 
-  const [sopAckList, allSops] = await Promise.all([
+  const [sopAckList, allSops, employee, exemptions] = await Promise.all([
     prisma.sOPAcknowledgement.findMany({ where: { email } }),
     prisma.sOP.findMany({ where: { isArchived: false } }),
+    prisma.employee.findUnique({ where: { email }, select: { createdAt: true } }),
+    prisma.sOPExemption.findMany({ where: { email } }),
   ]);
 
   // Employees only see Published SOPs/courses that match their department + role
@@ -40,6 +43,11 @@ export default async function ResourcePortalPage() {
     sopAckList
       .filter(a => { const sop = sops.find(s => s.id === a.sopId); return sop && a.version === sop.version; })
       .map(a => a.sopId)
+  );
+
+  const exemptSet = new Set(exemptions.map(e => e.sopId));
+  const deadlines = Object.fromEntries(
+    sops.map(sop => [sop.id, getSOPDeadline(sop, employee?.createdAt ?? null, sopAcks.has(sop.id), exemptSet.has(sop.id))])
   );
 
   const tierProgress = Object.fromEntries(
@@ -185,7 +193,17 @@ export default async function ResourcePortalPage() {
                     {tierSops.map(sop => {
                       const acked      = sopAcks.has(sop.id);
                       const needsReack = !acked && sopAckList.some(a => a.sopId === sop.id);
-                      return <ResourcePortalClient key={sop.id} sop={{ ...sop, blocks: sop.blocks as unknown as SOPBlock[] | null }} acked={acked} needsReack={needsReack} />;
+                      const { deadline, isOverdue } = deadlines[sop.id];
+                      return (
+                        <ResourcePortalClient
+                          key={sop.id}
+                          sop={{ ...sop, blocks: sop.blocks as unknown as SOPBlock[] | null }}
+                          acked={acked}
+                          needsReack={needsReack}
+                          deadline={deadline ? deadline.toISOString() : null}
+                          isOverdue={isOverdue}
+                        />
+                      );
                     })}
                   </div>
                 ) : (

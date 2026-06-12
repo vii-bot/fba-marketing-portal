@@ -49,7 +49,7 @@ export default async function StrikeDashboardPage() {
             <p className="text-xs uppercase tracking-wider text-rose-400 mb-2">Strike System</p>
             <h2 className="font-bold text-slate-100 mb-1" style={{ fontSize: 23 }}>Strike Dashboard</h2>
             <p className="text-sm text-slate-400 opacity-70">
-              FBA X Department · {currentQuarter} {currentYear}
+              FBA Marketing Portal · {currentQuarter} {currentYear}
             </p>
           </div>
           <Link

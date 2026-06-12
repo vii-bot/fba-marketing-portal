@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateId } from "@/lib/utils";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -44,6 +45,12 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
 
+  // Offset requests are no longer accepted for new submissions; historical
+  // records remain in the database and are still readable via GET.
+  if (body.type === "Offset") {
+    return NextResponse.json({ error: "Offset requests are no longer accepted." }, { status: 400 });
+  }
+
   // Validate OT hours limit (max 6 per week)
   if (body.type === "OT" && body.hours) {
     const date = new Date(body.date);
@@ -67,29 +74,6 @@ export async function POST(req: NextRequest) {
     if (used + body.hours > 6) {
       return NextResponse.json(
         { error: `OT limit exceeded. You have ${6 - used} hours remaining this week.` },
-        { status: 400 }
-      );
-    }
-  }
-
-  // Validate offset limit (max 2 per month)
-  if (body.type === "Offset") {
-    const date = new Date(body.date);
-    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-    const monthEnd   = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
-
-    const monthOffsets = await prisma.attendanceRequest.count({
-      where: {
-        email: { equals: body.email, mode: "insensitive" },
-        type: "Offset",
-        status: { in: ["Pending", "Approved"] },
-        createdAt: { gte: monthStart, lte: monthEnd },
-      },
-    });
-
-    if (monthOffsets >= 2) {
-      return NextResponse.json(
-        { error: "Offset limit reached. Maximum 2 offsets per month." },
         { status: 400 }
       );
     }
@@ -131,6 +115,10 @@ export async function PATCH(req: NextRequest) {
   const request = await prisma.attendanceRequest.update({
     where: { id },
     data: { status, reviewer, reviewNotes },
+  });
+
+  await logAudit(session.user.email, "attendance.review", "AttendanceRequest", request.id, {
+    name: request.name, type: request.type, status, reviewer,
   });
 
   return NextResponse.json(request);

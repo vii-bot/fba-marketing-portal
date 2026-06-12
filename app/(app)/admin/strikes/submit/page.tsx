@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { EmailUsernameInput } from "@/components/ui/EmailUsernameInput";
 import { EMPLOYEE_ROLES, DEPARTMENTS, STRIKE_TYPES, STRIKE_LEVELS } from "@/lib/utils";
 
 interface SOP { id: string; title: string; tier: string; category: string; }
@@ -66,7 +67,7 @@ export default function SubmitStrikePage() {
           <p className="text-xs uppercase tracking-widest text-indigo-400 mb-4">Employee Information</p>
           <div className="grid md:grid-cols-2 gap-4 mb-6">
             <div><label className="sf-label">Employee Name *</label><input className="sf-input" required value={form.name} onChange={e => set("name", e.target.value)} placeholder="Full name" /></div>
-            <div><label className="sf-label">Employee Email *</label><input className="sf-input" type="email" required value={form.email} onChange={e => set("email", e.target.value)} placeholder="employee@email.com" /></div>
+            <div><label className="sf-label">Employee Email *</label><EmailUsernameInput required value={form.email} onChange={v => set("email", v)} /></div>
             <div>
               <label className="sf-label">Role *</label>
               <select className="sf-input" required value={form.role} onChange={e => set("role", e.target.value)}>

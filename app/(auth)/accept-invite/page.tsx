@@ -64,7 +64,7 @@ function AcceptInviteForm() {
         <>
           <h2 className="font-bold text-slate-100 text-lg mb-1">Welcome, {invite.name}!</h2>
           <p className="text-sm text-slate-400 mb-6">
-            You&apos;ve been invited to join FBA X Platform as <strong className="text-slate-300">{invite.role}</strong> in the <strong className="text-slate-300">{invite.department}</strong> department.
+            You&apos;ve been invited to join the FBA Marketing Portal as <strong className="text-slate-300">{invite.role}</strong> in the <strong className="text-slate-300">{invite.department}</strong> department.
             Set a password to activate your account.
           </p>
           <form onSubmit={submit} className="space-y-4">

@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
+import { isAdmin, isDepartmentManager, canViewEmployeeDatabase } from "@/lib/permissions";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session || session.user.role !== "admin") {
+  const user = session?.user as any;
+  if (!session || !canViewEmployeeDatabase(user)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -14,11 +17,27 @@ export async function GET(req: NextRequest) {
   const role   = searchParams.get("role") ?? "";
   const status = searchParams.get("status") ?? "";
 
+  // Department Heads/Managers/Account Managers only see their own department;
+  // Admins/Executives see across all departments.
+  const deptScope = !isAdmin(user) && isDepartmentManager(user)
+    ? { department: user.department ?? "__none__" }
+    : {};
+
   const employees = await prisma.employee.findMany({
     where: {
-      ...(search && { OR: [{ name: { contains: search, mode: "insensitive" } }, { email: { contains: search, mode: "insensitive" } }] }),
+      ...deptScope,
+      ...(search && { OR: [
+        { name:       { contains: search, mode: "insensitive" } },
+        { email:      { contains: search, mode: "insensitive" } },
+        { role:       { contains: search, mode: "insensitive" } },
+        { department: { contains: search, mode: "insensitive" } },
+      ] }),
       ...(role   && { role }),
       ...(status && { status }),
+    },
+    include: {
+      user: { select: { profileComplete: true } },
+      inviteToken: { select: { expiresAt: true, usedAt: true } },
     },
     orderBy: { name: "asc" },
   });
@@ -28,13 +47,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session || session.user.role !== "admin") {
+  if (!session || !isAdmin(session.user as any)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await req.json();
   const email = body.email.toLowerCase();
-  const authRole = body.access?.superAdmin ? "admin" : "employee";
+  const department = body.department ?? "X";
+  const authRole = body.access?.superAdmin ? "admin" : body.role;
+
+  const existing = await prisma.employee.findUnique({ where: { email } });
 
   const employee = await prisma.employee.upsert({
     where: { email },
@@ -42,7 +64,7 @@ export async function POST(req: NextRequest) {
       name:       body.name,
       email,
       role:       body.role,
-      department: body.department ?? "FBA X Department",
+      department,
       startDate:  body.startDate ? new Date(body.startDate) : null,
       status:     body.status ?? "Active",
       notes:      body.notes ?? null,
@@ -52,7 +74,7 @@ export async function POST(req: NextRequest) {
     update: {
       name:       body.name,
       role:       body.role,
-      department: body.department ?? "FBA X Department",
+      department,
       startDate:  body.startDate ? new Date(body.startDate) : null,
       status:     body.status ?? "Active",
       notes:      body.notes ?? null,
@@ -61,22 +83,46 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Sync auth role on the linked User account if one exists
+  // Sync role/department onto the linked User account if one exists
   await prisma.user.updateMany({
     where: { email },
-    data:  { role: authRole },
+    data:  { role: authRole, department },
   });
+
+  await logAudit(
+    session.user.email,
+    existing ? "employee.update" : "employee.create",
+    "Employee",
+    employee.id,
+    existing
+      ? {
+          name: employee.name,
+          changes: {
+            ...(existing.role !== employee.role && { role: { from: existing.role, to: employee.role } }),
+            ...(existing.department !== employee.department && { department: { from: existing.department, to: employee.department } }),
+            ...(existing.status !== employee.status && { status: { from: existing.status, to: employee.status } }),
+            ...(JSON.stringify(existing.access) !== JSON.stringify(employee.access) && { access: { from: existing.access, to: employee.access } }),
+          },
+        }
+      : { name: employee.name, role: employee.role, department: employee.department }
+  );
 
   return NextResponse.json(employee, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session || session.user.role !== "admin") {
+  if (!session || !isAdmin(session.user as any)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id } = await req.json();
-  await prisma.employee.delete({ where: { id } });
+  const employee = await prisma.employee.delete({ where: { id } });
+
+  await logAudit(session.user.email, "employee.delete", "Employee", employee.id, {
+    name: employee.name,
+    email: employee.email,
+  });
+
   return NextResponse.json({ success: true });
 }

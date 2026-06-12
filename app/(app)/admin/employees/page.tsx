@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
-import { EMPLOYEE_ROLES, DEPARTMENTS, SCHEDULE_SHIFTS, formatDate } from "@/lib/utils";
-import { UserPlus, Pencil, Trash2, Inbox, Mail, Copy, Check } from "lucide-react";
+import { EmailUsernameInput } from "@/components/ui/EmailUsernameInput";
+import { EMPLOYEE_ROLES, DEPARTMENTS, ACTIVE_DEPARTMENTS, SCHEDULE_SHIFTS, formatDate } from "@/lib/utils";
+import { getEmployeeStatus } from "@/lib/employee-status";
+import { isAdmin } from "@/lib/permissions";
+import { useSession } from "@/lib/auth-client";
+import { UserPlus, Pencil, Trash2, Inbox, Mail, Copy, Check, UserCircle } from "lucide-react";
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const ACCESS_TOOLS = ["sheets","dropbox","infloww","xbots","linkme","beacons","website","notion","multilogin"];
@@ -14,6 +19,8 @@ interface Employee {
   startDate: string | null; status: string; notes: string; discordUsername: string | null;
   schedule: Record<string, string> | null;
   access: Record<string, boolean> | null;
+  user: { profileComplete: boolean } | null;
+  inviteToken: { expiresAt: string; usedAt: string | null } | null;
 }
 
 const emptyForm = () => ({
@@ -24,6 +31,8 @@ const emptyForm = () => ({
 });
 
 export default function EmployeesPage() {
+  const { data: session } = useSession();
+  const canManage = session?.user ? isAdmin(session.user as any) : false;
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
   const [roleF, setRoleF]   = useState("");
@@ -99,9 +108,11 @@ export default function EmployeesPage() {
             <h2 className="font-bold text-slate-100 mb-1" style={{ fontSize: 23 }}>Employee Database</h2>
             <p className="text-sm text-slate-400 opacity-70">Manage team members, schedules, and access.</p>
           </div>
-          <button onClick={openAdd} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 transition text-white text-sm font-semibold px-4 py-2.5 rounded-xl shrink-0">
-            <UserPlus size={15} /> Add Employee
-          </button>
+          {canManage && (
+            <button onClick={openAdd} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 transition text-white text-sm font-semibold px-4 py-2.5 rounded-xl shrink-0">
+              <UserPlus size={15} /> Add Employee
+            </button>
+          )}
         </div>
       </div>
 
@@ -123,7 +134,7 @@ export default function EmployeesPage() {
       {/* Filters */}
       <div className="card rounded-xl p-4 mb-4">
         <div className="flex flex-wrap gap-2">
-          <input className="db-filter flex-1 min-w-[160px]" placeholder="Search name or email…" value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="db-filter flex-1 min-w-[160px]" placeholder="Search name, email, role, or department…" value={search} onChange={e => setSearch(e.target.value)} />
           <select className="db-filter" value={deptF} onChange={e => setDeptF(e.target.value)}>
             <option value="">All Departments</option>
             {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
@@ -149,7 +160,7 @@ export default function EmployeesPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table">
-              <thead><tr><th>Employee</th><th>Role</th><th>Start Date</th><th>Status</th><th>Department</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Employee</th><th>Role</th><th>Start Date</th><th>Status</th><th>Department</th><th>Login Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map(e => (
                   <tr key={e.id}>
@@ -158,10 +169,16 @@ export default function EmployeesPage() {
                     <td>{e.startDate ? formatDate(e.startDate) : "—"}</td>
                     <td><Badge label={e.status} /></td>
                     <td className="text-xs text-slate-400">{e.department}</td>
+                    <td><Badge label={getEmployeeStatus(e)} /></td>
                     <td>
                       <div className="flex gap-2">
-                        <button onClick={() => openEdit(e)} className="text-indigo-400 hover:text-indigo-300"><Pencil size={14} /></button>
-                        <button onClick={() => del(e.id)} className="text-rose-400 hover:text-rose-300"><Trash2 size={14} /></button>
+                        <Link href={`/admin/employees/${e.id}`} className="text-slate-400 hover:text-slate-200" title="View Profile"><UserCircle size={14} /></Link>
+                        {canManage && (
+                          <>
+                            <button onClick={() => openEdit(e)} className="text-indigo-400 hover:text-indigo-300"><Pencil size={14} /></button>
+                            <button onClick={() => del(e.id)} className="text-rose-400 hover:text-rose-300"><Trash2 size={14} /></button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -214,9 +231,9 @@ export default function EmployeesPage() {
             {tab === "info" && (
               <div className="grid md:grid-cols-2 gap-4">
                 <div><label className="sf-label">Name *</label><input className="sf-input" value={form.name} onChange={e => setF("name", e.target.value)} /></div>
-                <div><label className="sf-label">Email *</label><input className="sf-input" type="email" value={form.email} onChange={e => setF("email", e.target.value)} /></div>
+                <div><label className="sf-label">Email *</label><EmailUsernameInput required value={form.email} onChange={v => setF("email", v)} /></div>
                 <div><label className="sf-label">Role *</label><select className="sf-input" value={form.role} onChange={e => setF("role", e.target.value)}>{EMPLOYEE_ROLES.map(r => <option key={r}>{r}</option>)}</select></div>
-                <div><label className="sf-label">Department</label><select className="sf-input" value={form.department} onChange={e => setF("department", e.target.value)}>{DEPARTMENTS.map(d => <option key={d}>{d}</option>)}</select></div>
+                <div><label className="sf-label">Department</label><select className="sf-input" value={form.department} onChange={e => setF("department", e.target.value)}>{ACTIVE_DEPARTMENTS.map(d => <option key={d}>{d}</option>)}</select></div>
                 <div><label className="sf-label">Start Date</label><input className="sf-input" type="date" value={form.startDate} onChange={e => setF("startDate", e.target.value)} /></div>
                 <div><label className="sf-label">Status</label><select className="sf-input" value={form.status} onChange={e => setF("status", e.target.value)}>{["Active","Inactive","On Leave","Terminated"].map(s => <option key={s}>{s}</option>)}</select></div>
                 <div><label className="sf-label">Discord Username</label><input className="sf-input" value={form.discordUsername} onChange={e => setF("discordUsername", e.target.value)} placeholder="@handle" /></div>

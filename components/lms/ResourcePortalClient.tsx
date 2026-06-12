@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { CheckCircle2, Circle, RefreshCw, Clock, ArrowRight } from "lucide-react";
+import { CheckCircle2, Circle, RefreshCw, Clock, ArrowRight, AlertTriangle } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 import type { SOPBlock } from "@/lib/sop-blocks";
 
 interface SOP {
@@ -11,16 +12,22 @@ interface Props {
   sop: SOP;
   acked: boolean;
   needsReack: boolean;
+  deadline?: string | null;
+  isOverdue?: boolean;
 }
 
-export default function ResourcePortalClient({ sop, acked, needsReack }: Props) {
-  const borderColor = needsReack
+export default function ResourcePortalClient({ sop, acked, needsReack, deadline, isOverdue }: Props) {
+  const borderColor = isOverdue
+    ? "border-rose-500/30"
+    : needsReack
     ? "border-amber-500/30"
     : acked
       ? "border-emerald-500/15"
       : "border-slate-700/40";
 
-  const statusBadge = needsReack
+  const statusBadge = isOverdue
+    ? <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full shrink-0">Overdue</span>
+    : needsReack
     ? <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full shrink-0">Re-ack needed</span>
     : acked
       ? <span className="text-xs text-emerald-500/80 bg-emerald-500/10 px-2 py-0.5 rounded-full shrink-0">Acknowledged</span>
@@ -59,6 +66,15 @@ export default function ResourcePortalClient({ sop, acked, needsReack }: Props) 
               <span>·</span>
               <Clock size={10} />
               <span>{sop.estimatedMinutes} min</span>
+            </>
+          )}
+          {!acked && deadline && (
+            <>
+              <span>·</span>
+              <span className={`flex items-center gap-1 ${isOverdue ? "text-rose-400" : ""}`}>
+                {isOverdue && <AlertTriangle size={10} />}
+                Due {formatDate(deadline)}
+              </span>
             </>
           )}
         </div>

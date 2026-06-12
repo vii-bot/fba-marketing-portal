@@ -64,6 +64,13 @@ export function canViewEmployee(
   return canViewDepartment(viewer, employee.department);
 }
 
+// Admins/Executives can browse the full Employee Database across all
+// departments; Department Heads/Managers/Account Managers can browse their
+// own department's employees only. Regular employees have no access.
+export function canViewEmployeeDatabase(user: PermUser): boolean {
+  return isAdmin(user) || isDepartmentManager(user);
+}
+
 // ── Department management ─────────────────────────────────────────────────────
 
 export function canManageDepartment(user: PermUser, department: string): boolean {
@@ -115,4 +122,43 @@ export function canApproveOT(user: PermUser): boolean {
 
 export function canApproveLeave(user: PermUser): boolean {
   return isExecutive(user) || isDepartmentManager(user);
+}
+
+// ── Contractor Change Requests ────────────────────────────────────────────────
+
+// Authorized roles for the FBA Contractor Change Request form (bugs.md
+// Phase 6): Admin, Department Head, Department Manager, Account Manager,
+// Executive, and TA/Payroll Manager (an HR/payroll role outside the normal
+// MANAGER_ROLES department-management chain).
+export function canManageContractors(user: PermUser): boolean {
+  return isAdmin(user) || isDepartmentManager(user) || user.role === "TA/Payroll Manager";
+}
+
+// ── Creator Reports ───────────────────────────────────────────────────────────
+
+// Who sees the Creator Reports admin dashboard (bugs.md Phase 10): Admins/
+// Executives (all departments), Department Heads/Managers (their own
+// department), and Account Managers (Internal + Creator reports
+// platform-wide). All three are covered by isAdmin || isDepartmentManager —
+// the dashboard's API route applies the per-role department/visibility
+// scoping on top of this gate.
+export function canManageCreatorReports(user: PermUser): boolean {
+  return isAdmin(user) || isDepartmentManager(user);
+}
+
+// ── Internal Documentation CMS ────────────────────────────────────────────────
+
+// Who can access the Internal Documentation area (bugs.md Phase 13):
+// Admins/Executives always; Department Heads/Managers/Account Managers may
+// open the area, but only see Published pages whose `visibility` includes
+// their role ("if permission is granted" — granted per page via
+// DocPage.visibility, not a blanket toggle). Regular employees have no access.
+export function canAccessInternalDocs(user: PermUser): boolean {
+  return isAdmin(user) || isDepartmentManager(user);
+}
+
+// Who can manage the CMS itself — create/edit/publish/unpublish/archive/
+// delete pages, and see Draft/Archived pages: Admins/Executives only.
+export function canManageInternalDocs(user: PermUser): boolean {
+  return isAdmin(user);
 }

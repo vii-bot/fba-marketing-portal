@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FBA X Department — Internal Training Platform",
-  description: "Internal training and operations platform for the FBA X Department",
+  title: "FBA Marketing Portal",
+  description: "Internal operations portal for Fatbear Agency",
 };
 
 export default function RootLayout({

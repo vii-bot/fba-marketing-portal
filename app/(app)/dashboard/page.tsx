@@ -2,14 +2,18 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
+import { canManageContractors, canManageCreatorReports, canAccessInternalDocs } from "@/lib/permissions";
 import Link from "next/link";
-import { LayoutDashboard, BookOpen, AlertTriangle, Clock, ShieldCheck, Users, CalendarCheck, BarChart2, GraduationCap } from "lucide-react";
+import { LayoutDashboard, BookOpen, AlertTriangle, Clock, ShieldCheck, Users, CalendarCheck, BarChart2, GraduationCap, Inbox, FileText, Briefcase, ListTodo, Library } from "lucide-react";
 import DashboardSearch from "@/components/ui/DashboardSearch";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   const user = session!.user;
   const isAdmin = user.role === "admin";
+  const canAccessContractorRequests = canManageContractors(user as any);
+  const canAccessCreatorReports = canManageCreatorReports(user as any);
+  const canAccessDocs = canAccessInternalDocs(user as any);
 
   const [activeStrikes, pendingRequests, recentProgress] = await Promise.all([
     prisma.strike.count({ where: { email: { equals: user.email, mode: "insensitive" }, status: "Active" } }),
@@ -108,6 +112,31 @@ export default async function DashboardPage() {
             <p className="font-semibold text-emerald-300 text-sm mb-1">Employee DB</p>
             <p className="text-xs text-slate-400">Manage team and schedules</p>
           </Link>
+          <Link href="/admin/requests" className="card rounded-xl p-5 hover:border-purple-400 transition block">
+            <Inbox size={20} className="text-purple-400 mb-2" />
+            <p className="font-semibold text-purple-300 text-sm mb-1">Employee Requests</p>
+            <p className="text-xs text-slate-400">Review COE and other employee requests</p>
+          </Link>
+          <Link href="/admin/contractor-requests" className="card rounded-xl p-5 hover:border-amber-400 transition block">
+            <Briefcase size={20} className="text-amber-400 mb-2" />
+            <p className="font-semibold text-amber-300 text-sm mb-1">Contractor Requests</p>
+            <p className="text-xs text-slate-400">Review terminations, transfers, and hires</p>
+          </Link>
+          <Link href="/admin/tasks" className="card rounded-xl p-5 hover:border-sky-400 transition block">
+            <ListTodo size={20} className="text-sky-400 mb-2" />
+            <p className="font-semibold text-sky-300 text-sm mb-1">Taskboard</p>
+            <p className="text-xs text-slate-400">Review daily tasks and time spent per employee</p>
+          </Link>
+          <Link href="/admin/creator-reports" className="card rounded-xl p-5 hover:border-teal-400 transition block">
+            <FileText size={20} className="text-teal-400 mb-2" />
+            <p className="font-semibold text-teal-300 text-sm mb-1">Creator Reports</p>
+            <p className="text-xs text-slate-400">Review weekly creator/account reports</p>
+          </Link>
+          <Link href="/admin/internal-docs" className="card rounded-xl p-5 hover:border-violet-400 transition block">
+            <Library size={20} className="text-violet-400 mb-2" />
+            <p className="font-semibold text-violet-300 text-sm mb-1">Internal Documentation</p>
+            <p className="text-xs text-slate-400">App architecture, workflows, and dev notes</p>
+          </Link>
         </div>
       ) : (
         <div className="grid md:grid-cols-3 gap-4 mb-6">
@@ -124,8 +153,44 @@ export default async function DashboardPage() {
           <Link href="/attendance" className="card rounded-xl p-5 hover:border-emerald-400 transition block">
             <Clock size={20} className="text-emerald-400 mb-2" />
             <p className="font-semibold text-emerald-300 text-sm mb-1">Submit a Request</p>
-            <p className="text-xs text-slate-400">OT, leave, offset requests</p>
+            <p className="text-xs text-slate-400">OT, Weekend OT, and leave requests</p>
           </Link>
+          <Link href="/requests" className="card rounded-xl p-5 hover:border-purple-400 transition block">
+            <FileText size={20} className="text-purple-400 mb-2" />
+            <p className="font-semibold text-purple-300 text-sm mb-1">My Requests</p>
+            <p className="text-xs text-slate-400">COE and other employee requests</p>
+          </Link>
+          <Link href="/tasks" className="card rounded-xl p-5 hover:border-sky-400 transition block">
+            <ListTodo size={20} className="text-sky-400 mb-2" />
+            <p className="font-semibold text-sky-300 text-sm mb-1">My Taskboard</p>
+            <p className="text-xs text-slate-400">Log tasks and track time spent</p>
+          </Link>
+          <Link href="/my-creators/reports" className="card rounded-xl p-5 hover:border-teal-400 transition block">
+            <FileText size={20} className="text-teal-400 mb-2" />
+            <p className="font-semibold text-teal-300 text-sm mb-1">Creator Reports</p>
+            <p className="text-xs text-slate-400">Submit weekly account reports</p>
+          </Link>
+          {canAccessContractorRequests && (
+            <Link href="/admin/contractor-requests" className="card rounded-xl p-5 hover:border-amber-400 transition block">
+              <Briefcase size={20} className="text-amber-400 mb-2" />
+              <p className="font-semibold text-amber-300 text-sm mb-1">Contractor Requests</p>
+              <p className="text-xs text-slate-400">Review terminations, transfers, and hires</p>
+            </Link>
+          )}
+          {canAccessCreatorReports && (
+            <Link href="/admin/creator-reports" className="card rounded-xl p-5 hover:border-teal-400 transition block">
+              <BarChart2 size={20} className="text-teal-400 mb-2" />
+              <p className="font-semibold text-teal-300 text-sm mb-1">Creator Reports Admin</p>
+              <p className="text-xs text-slate-400">Review and export team reports</p>
+            </Link>
+          )}
+          {canAccessDocs && (
+            <Link href="/admin/internal-docs" className="card rounded-xl p-5 hover:border-violet-400 transition block">
+              <Library size={20} className="text-violet-400 mb-2" />
+              <p className="font-semibold text-violet-300 text-sm mb-1">Internal Documentation</p>
+              <p className="text-xs text-slate-400">App architecture, workflows, and dev notes</p>
+            </Link>
+          )}
         </div>
       )}
 
@@ -172,20 +237,63 @@ export default async function DashboardPage() {
   );
 }
 
+// Human-readable label per audit action. Falls back to "<actor> — <action>"
+// for any action not listed here (keeps this future-proof as new actions
+// are added without needing to touch the dashboard).
+const AUDIT_LABELS: Record<string, (l: { actor: string; metadata: any }) => string> = {
+  "employee.create":   (l) => `Employee added — ${l.metadata?.name ?? ""} (${l.metadata?.role ?? ""})`,
+  "employee.update":   (l) => `Employee updated — ${l.metadata?.name ?? ""}`,
+  "employee.delete":   (l) => `Employee removed — ${l.metadata?.name ?? l.metadata?.email ?? ""}`,
+  "strike.create":     (l) => `Strike issued — ${l.metadata?.name ?? ""} (${l.metadata?.level ?? ""})`,
+  "strike.update":     (l) => `Strike updated — ${l.metadata?.name ?? ""}`,
+  "strike.delete":     (l) => `Strike deleted — ${l.metadata?.name ?? ""}`,
+  "appeal.review":     (l) => `Appeal ${String(l.metadata?.status ?? "").toLowerCase()} — ${l.metadata?.email ?? ""}`,
+  "attendance.review": (l) => `${l.metadata?.type ?? "Request"} request ${String(l.metadata?.status ?? "").toLowerCase()} — ${l.metadata?.name ?? ""}`,
+  "admin.clear":       (l) => `Database cleared (${l.metadata?.action ?? ""}) — ${l.actor}`,
+  "sop.create":        (l) => `SOP created — ${l.metadata?.title ?? ""}`,
+  "sop.update":        (l) => `SOP updated — ${l.metadata?.title ?? ""}`,
+  "sop.duplicate":     (l) => `SOP duplicated — ${l.metadata?.title ?? ""}`,
+  "sop.acknowledge":   (l) => `SOP acknowledged — ${l.actor}`,
+  "module.acknowledge":(l) => `Module acknowledged — ${l.actor}`,
+  "assessment.submit": (l) => `Assessment submitted — ${l.actor} (${l.metadata?.passed ? "Passed" : "Failed"})`,
+  "profile.update":    (l) => `Profile updated — ${l.actor}`,
+  "invite.create":     (l) => `Invite sent — ${l.metadata?.invitedEmail ?? ""}`,
+  "request.create":    (l) => `${l.metadata?.type ?? "Request"} request submitted — ${l.metadata?.name ?? ""}`,
+  "request.review":    (l) => `${l.metadata?.type ?? "Request"} request ${String(l.metadata?.status ?? "").toLowerCase()} — ${l.metadata?.name ?? ""}`,
+  "contractor-request.create": (l) => `Contractor ${l.metadata?.requestType ?? "change"} request submitted — ${l.metadata?.contractorName ?? l.metadata?.department ?? ""}`,
+  "contractor-request.review": (l) => `Contractor ${l.metadata?.requestType ?? "change"} request ${String(l.metadata?.status ?? "").toLowerCase()} — ${l.metadata?.contractorName ?? ""}`,
+  "team-note.create":  (l) => `Team note added — ${l.metadata?.creatorName ?? ""}`,
+  "team-note.update":  (l) => `Team note edited — ${l.metadata?.creatorName ?? ""}`,
+  "team-note.delete":  (l) => `Team note deleted — ${l.metadata?.creatorName ?? ""}`,
+  "creator-report.create": (l) => `${l.metadata?.reportType ?? "Report"} submitted — ${l.metadata?.creatorName ?? ""} (@${l.metadata?.accountUsername ?? ""})`,
+  "creator-report.review": (l) => `Creator report ${String(l.metadata?.status ?? "").toLowerCase()} — ${l.metadata?.creatorName ?? ""} (@${l.metadata?.accountUsername ?? ""})`,
+  "creator-report.export": (l) => `Creator reports exported — ${l.metadata?.count ?? 0} record(s) by ${l.actor}`,
+  "internal-doc.create": (l) => `Internal doc created — ${l.metadata?.title ?? ""} (${l.metadata?.category ?? ""})`,
+  "internal-doc.update": (l) => `Internal doc updated — ${l.metadata?.title ?? ""} (${l.metadata?.status ?? ""})`,
+  "internal-doc.delete": (l) => `Internal doc deleted — ${l.metadata?.title ?? ""}`,
+};
+
+function auditColor(action: string, metadata: any): string {
+  if (action.endsWith(".delete") || action === "admin.clear") return "bg-rose-400";
+  if (action.endsWith(".create")) return "bg-indigo-400";
+  if (action.endsWith(".review")) {
+    if (metadata?.status === "Approved" || metadata?.status === "Completed") return "bg-emerald-400";
+    if (metadata?.status === "Rejected") return "bg-rose-400";
+    return "bg-amber-400";
+  }
+  return "bg-slate-400";
+}
+
 async function buildAuditLog() {
-  const [recentStrikes, recentRequests, recentEmployees, recentAppeals] = await Promise.all([
-    prisma.strike.findMany({ orderBy: { createdAt: "desc" }, take: 3, select: { name: true, level: true, type: true, createdAt: true } }),
-    prisma.attendanceRequest.findMany({ where: { status: { not: "Pending" } }, orderBy: { updatedAt: "desc" }, take: 3, select: { name: true, type: true, status: true, updatedAt: true } }),
-    prisma.employee.findMany({ orderBy: { createdAt: "desc" }, take: 2, select: { name: true, role: true, createdAt: true } }),
-    prisma.appeal.findMany({ where: { status: { not: "Pending" } }, orderBy: { updatedAt: "desc" }, take: 2, select: { email: true, status: true, updatedAt: true } }),
-  ]);
+  const logs = await prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 8 });
 
-  const items: { label: string; date: string; color: string }[] = [
-    ...recentStrikes.map(s => ({ label: `Strike issued — ${s.name} (${s.level})`, date: s.createdAt.toISOString(), color: "bg-rose-400" })),
-    ...recentRequests.map(r => ({ label: `${r.type} request ${r.status.toLowerCase()} — ${r.name}`, date: r.updatedAt.toISOString(), color: r.status === "Approved" ? "bg-emerald-400" : "bg-amber-400" })),
-    ...recentEmployees.map(e => ({ label: `Employee added — ${e.name} (${e.role})`, date: e.createdAt.toISOString(), color: "bg-indigo-400" })),
-    ...recentAppeals.map(a => ({ label: `Appeal ${a.status.toLowerCase()} — ${a.email}`, date: a.updatedAt.toISOString(), color: a.status === "Approved" ? "bg-emerald-400" : "bg-slate-400" })),
-  ];
-
-  return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
+  return logs.map(l => {
+    const metadata = (l.metadata as any) ?? {};
+    const format = AUDIT_LABELS[l.action];
+    return {
+      label: format ? format({ actor: l.actor, metadata }) : `${l.actor} — ${l.action}`,
+      date: l.createdAt.toISOString(),
+      color: auditColor(l.action, metadata),
+    };
+  });
 }

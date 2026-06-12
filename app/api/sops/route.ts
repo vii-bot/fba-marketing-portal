@@ -59,6 +59,10 @@ export async function POST(req: NextRequest) {
         status:           "Draft",
         blocks:           source.blocks ?? undefined,
         estimatedMinutes: source.estimatedMinutes,
+        deadlineType:     source.deadlineType,
+        deadlineDate:     source.deadlineDate,
+        deadlineDays:     source.deadlineDays,
+        deadlineBasis:    source.deadlineBasis,
         createdBy:        user.email,
       },
     });
@@ -88,6 +92,10 @@ export async function POST(req: NextRequest) {
       status:           body.status ?? "Published",
       blocks:           body.blocks ?? undefined,
       estimatedMinutes: body.estimatedMinutes ?? null,
+      deadlineType:     body.deadlineType ?? "None",
+      deadlineDate:     body.deadlineType === "Fixed" ? (body.deadlineDate ?? null) : null,
+      deadlineDays:     body.deadlineType === "Relative" ? (body.deadlineDays ?? null) : null,
+      deadlineBasis:    body.deadlineType === "Relative" ? (body.deadlineBasis ?? "Publish") : null,
       createdBy:        user.email,
     },
   });
@@ -133,8 +141,23 @@ export async function PATCH(req: NextRequest) {
     await notifyNewSOP(sop.id, sop.title, sop.department);
   }
 
+  // Track deadline-rule changes separately for the audit trail (bugs.md Phase 3)
+  const DEADLINE_FIELDS = ["deadlineType", "deadlineDate", "deadlineDays", "deadlineBasis"] as const;
+  const deadlineChange: Record<string, { from: any; to: any }> = {};
+  for (const f of DEADLINE_FIELDS) {
+    if (f in data && JSON.stringify((existing as any)[f]) !== JSON.stringify((sop as any)[f])) {
+      deadlineChange[f] = { from: (existing as any)[f], to: (sop as any)[f] };
+    }
+  }
+
   await prisma.auditLog.create({
-    data: { actor: user.email, action: "sop.update", entityType: "SOP", entityId: sop.id, metadata: { title: sop.title, bumpVersion, status: sop.status } },
+    data: {
+      actor: user.email, action: "sop.update", entityType: "SOP", entityId: sop.id,
+      metadata: {
+        title: sop.title, bumpVersion, status: sop.status,
+        ...(Object.keys(deadlineChange).length > 0 && { deadlineChange }),
+      },
+    },
   });
 
   return NextResponse.json(sop);

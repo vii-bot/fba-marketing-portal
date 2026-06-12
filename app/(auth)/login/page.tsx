@@ -36,10 +36,9 @@ export default function LoginPage() {
     <div className="min-h-screen w-full flex items-center justify-center p-6 bg-slate-950">
       <div className="w-full max-w-md rounded-3xl border border-slate-700/60 bg-slate-900 p-8 shadow-2xl shadow-slate-950/40">
         <div className="flex items-center gap-3 mb-6">
-          <img src="/x-logo-fba.webp" alt="FBA X" className="w-8 h-8 object-contain" />
           <div>
-            <h1 className="text-xl font-bold text-slate-100">FBA X Department</h1>
-            <p className="text-xs text-slate-500">Internal Training &amp; Operations Platform</p>
+            <h1 className="text-xl font-bold text-slate-100">FBA Marketing Portal</h1>
+            <p className="text-xs text-slate-500">Fatbear Agency — Internal Operations</p>
           </div>
         </div>
 
@@ -100,7 +99,7 @@ export default function LoginPage() {
         </form>
 
         <p className="text-xs text-slate-600 mt-6 text-center">
-          Access is limited to registered FBA X Department employees.
+          Access is limited to registered Fatbear Agency employees.
         </p>
       </div>
     </div>

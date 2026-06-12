@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 export async function DELETE(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -35,6 +36,8 @@ export async function DELETE(req: NextRequest) {
     default:
       return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   }
+
+  await logAudit(session.user.email, "admin.clear", "Database", undefined, { action });
 
   return NextResponse.json({ success: true });
 }

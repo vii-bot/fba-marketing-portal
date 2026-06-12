@@ -22,6 +22,15 @@ interface SOPRecord {
   id: string; title: string; category: string; content: string; contentType: string;
   tier: string; isRequired: boolean; isArchived: boolean; department: string;
   roles: string[]; status: string; blocks: SOPBlock[] | null; estimatedMinutes: number | null;
+  deadlineType: string; deadlineDate: string | null; deadlineDays: number | null; deadlineBasis: string | null;
+}
+
+interface SOPExemptionRecord {
+  id: string; sopId: string; email: string; reason: string | null; grantedBy: string; createdAt: string;
+}
+
+interface EmployeeOption {
+  email: string; name: string;
 }
 
 interface FormState {
@@ -34,11 +43,16 @@ interface FormState {
   status: "Draft" | "Published";
   isRequired: boolean;
   estimatedMinutes: string;
+  deadlineType: "None" | "Fixed" | "Relative";
+  deadlineDate: string;
+  deadlineDays: string;
+  deadlineBasis: "Publish" | "Assignment";
 }
 
 const emptyForm = (department: string): FormState => ({
   title: "", department, roles: [], tier: "Introductory", category: "",
   contentType: "SOP", status: "Draft", isRequired: true, estimatedMinutes: "",
+  deadlineType: "None", deadlineDate: "", deadlineDays: "", deadlineBasis: "Publish",
 });
 
 export default function SOPBuilderPage() {
@@ -61,6 +75,11 @@ export default function SOPBuilderPage() {
   const [preview, setPreview]   = useState(false);
   const [aiOpen, setAiOpen]     = useState(false);
   const [toast, setToast]       = useState<string | null>(null);
+
+  const [exemptions, setExemptions] = useState<SOPExemptionRecord[]>([]);
+  const [employees, setEmployees]   = useState<EmployeeOption[]>([]);
+  const [exemptEmail, setExemptEmail]   = useState("");
+  const [exemptReason, setExemptReason] = useState("");
 
   // Lock department to the manager's own department once we know who they are
   useEffect(() => {
@@ -90,11 +109,57 @@ export default function SOPBuilderPage() {
         status: (sop.status as "Draft" | "Published") ?? "Published",
         isRequired: sop.isRequired,
         estimatedMinutes: sop.estimatedMinutes != null ? String(sop.estimatedMinutes) : "",
+        deadlineType: (sop.deadlineType as FormState["deadlineType"]) ?? "None",
+        deadlineDate: sop.deadlineDate ? new Date(sop.deadlineDate).toISOString().slice(0, 16) : "",
+        deadlineDays: sop.deadlineDays != null ? String(sop.deadlineDays) : "",
+        deadlineBasis: (sop.deadlineBasis as FormState["deadlineBasis"]) ?? "Publish",
       });
       setBlocks(sop.blocks?.length ? sop.blocks : legacyContentToBlocks(sop.content));
       setLoading(false);
     })();
   }, [isNew, params.id]);
+
+  // Load deadline exemptions for this SOP
+  const loadExemptions = async (id: string) => {
+    const res = await fetch(`/api/sop-exemptions?sopId=${id}`);
+    if (res.ok) setExemptions(await res.json());
+  };
+  useEffect(() => {
+    if (sopId) loadExemptions(sopId);
+  }, [sopId]);
+
+  // Load employee list for the exemption picker
+  useEffect(() => {
+    fetch("/api/employees")
+      .then(r => r.ok ? r.json() : [])
+      .then((list: { email: string; name: string }[]) => setEmployees(Array.isArray(list) ? list.map(e => ({ email: e.email, name: e.name })) : []))
+      .catch(() => {});
+  }, []);
+
+  const addExemption = async () => {
+    if (!sopId || !exemptEmail.trim()) return;
+    const res = await fetch("/api/sop-exemptions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sopId, email: exemptEmail.trim(), reason: exemptReason.trim() || undefined }),
+    });
+    if (res.ok) {
+      setExemptEmail("");
+      setExemptReason("");
+      loadExemptions(sopId);
+      showToast("Exemption added.");
+    }
+  };
+
+  const removeExemption = async (id: string) => {
+    if (!sopId) return;
+    await fetch("/api/sop-exemptions", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    loadExemptions(sopId);
+  };
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -110,6 +175,10 @@ export default function SOPBuilderPage() {
       status: f.status,
       isRequired: f.isRequired,
       estimatedMinutes: f.estimatedMinutes ? Number(f.estimatedMinutes) : null,
+      deadlineType: f.deadlineType,
+      deadlineDate: f.deadlineType === "Fixed" && f.deadlineDate ? new Date(f.deadlineDate).toISOString() : null,
+      deadlineDays: f.deadlineType === "Relative" && f.deadlineDays ? Number(f.deadlineDays) : null,
+      deadlineBasis: f.deadlineType === "Relative" ? f.deadlineBasis : null,
       blocks,
       content: blocks.find(b => b.type === "paragraph")?.content as string ?? "",
     };
@@ -304,6 +373,43 @@ export default function SOPBuilderPage() {
               </div>
 
               <div className="md:col-span-2">
+                <label className="sf-label">Acknowledgement deadline</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select className="sf-input w-auto" value={form.deadlineType} onChange={e => setForm(f => ({ ...f, deadlineType: e.target.value as FormState["deadlineType"] }))}>
+                    <option value="None">No deadline</option>
+                    <option value="Fixed">Fixed date &amp; time</option>
+                    <option value="Relative">Relative — X days after…</option>
+                  </select>
+                  {form.deadlineType === "Fixed" && (
+                    <input
+                      type="datetime-local" className="sf-input w-auto"
+                      value={form.deadlineDate}
+                      onChange={e => setForm(f => ({ ...f, deadlineDate: e.target.value }))}
+                    />
+                  )}
+                  {form.deadlineType === "Relative" && (
+                    <>
+                      <input
+                        type="number" min={1} className="sf-input w-20"
+                        value={form.deadlineDays}
+                        onChange={e => setForm(f => ({ ...f, deadlineDays: e.target.value }))}
+                        placeholder="days"
+                      />
+                      <span className="text-sm text-slate-400">days after</span>
+                      <select className="sf-input w-auto" value={form.deadlineBasis} onChange={e => setForm(f => ({ ...f, deadlineBasis: e.target.value as FormState["deadlineBasis"] }))}>
+                        <option value="Publish">publish date</option>
+                        <option value="Assignment">employee's assignment date</option>
+                      </select>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Employees see this deadline on the {form.contentType.toLowerCase()} and are flagged as overdue if not acknowledged in time.
+                  Individual employees can be exempted below.
+                </p>
+              </div>
+
+              <div className="md:col-span-2">
                 <label className="sf-label">Role access</label>
                 <div className="flex flex-wrap gap-1.5">
                   {EMPLOYEE_ROLES.map(role => {
@@ -328,6 +434,48 @@ export default function SOPBuilderPage() {
               </div>
             </div>
           </div>
+
+          {/* Deadline exemptions */}
+          {sopId && (
+            <div className="card rounded-2xl p-6 mb-6">
+              <h4 className="text-sm font-semibold text-slate-200 mb-1">Deadline exemptions</h4>
+              <p className="text-xs text-slate-600 mb-4">
+                Exempt specific employees from this {form.contentType.toLowerCase()}'s acknowledgement deadline (e.g. new hires who need more time).
+                Other employees are still bound by the deadline above.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-4">
+                <input
+                  className="sf-input flex-1 min-w-[180px]" list="sop-employee-emails" placeholder="Employee email…"
+                  value={exemptEmail} onChange={e => setExemptEmail(e.target.value)}
+                />
+                <datalist id="sop-employee-emails">
+                  {employees.map(e => <option key={e.email} value={e.email}>{e.name}</option>)}
+                </datalist>
+                <input
+                  className="sf-input flex-1 min-w-[180px]" placeholder="Reason (optional)"
+                  value={exemptReason} onChange={e => setExemptReason(e.target.value)}
+                />
+                <button onClick={addExemption} className="bg-indigo-600 hover:bg-indigo-500 transition text-white text-sm font-semibold px-4 py-2 rounded-xl shrink-0">
+                  Add exemption
+                </button>
+              </div>
+              {exemptions.length === 0 ? (
+                <p className="text-sm text-slate-500">No exemptions yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {exemptions.map(ex => (
+                    <div key={ex.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/40 px-4 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-200 truncate">{ex.email}</p>
+                        {ex.reason && <p className="text-xs text-slate-500 truncate">{ex.reason}</p>}
+                      </div>
+                      <button onClick={() => removeExemption(ex.id)} className="text-rose-400 hover:text-rose-300 text-xs shrink-0">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Block editor */}
           <div className="card rounded-2xl p-6 mb-6">

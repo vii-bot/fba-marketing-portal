@@ -1,24 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
 import { formatDate } from "@/lib/utils";
-import { Plus, Search, Inbox, Pencil, Archive, ExternalLink, Star, Users, RotateCcw, Trash2 } from "lucide-react";
+import { Plus, Search, Inbox, Pencil, Archive, ExternalLink, Star, Users, RotateCcw, Trash2, FileText } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Account {
-  platform: string; accountType: string; username: string; followers: string; url: string;
+  platform: string; accountType: string; username: string; url: string;
 }
 interface Highlight {
   id: string; platform: string; postLink: string | null; accountUsername: string | null;
   likes: number; reposts: number; views: number; comments: number; bookmarks: number;
   notes: string | null; submittedBy: string | null; createdAt: string;
 }
+interface TeamNote {
+  id: string; content: string; authorEmail: string; authorName: string;
+  editedAt: string | null; createdAt: string;
+}
 interface Creator {
   id: string; creatorCode: string; creatorName: string; status: string; priority: string;
   needsMedia: boolean; needsReview: boolean; assignedPageRunners: string[];
-  uploadsFolder: string | null; mediaFolder: string | null; overview: string | null;
+  uploadsFolder: string | null; mediaFolder: string | null; signedPlatforms: string[]; overview: string | null;
   niche: any; assets: any; accounts: any; strategy: any;
   highlights: Highlight[];
   createdAt: string; updatedAt: string;
@@ -27,6 +32,7 @@ interface Creator {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const STATUSES   = ["New","Active","Paused","Inactive","Dropped","Testing","Replacing Account"];
+const CREATOR_STATUSES = ["Active","Paused","Inactive","Dropped"];
 const PRIORITIES = ["High","Medium","Low"];
 const ACC_TYPES  = ["FBA Main","FBA Backup","FBA Funnel","Promo","Other"];
 const PLATFORMS  = ["X","Instagram","Reddit"];
@@ -52,6 +58,14 @@ const PRIORITY_STYLE: Record<string, string> = {
   Medium: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   Low:    "bg-slate-500/15 text-slate-300 border-slate-500/30",
 };
+const PLATFORM_STYLE: Record<string, string> = {
+  X:         "bg-slate-700/60 text-slate-200 border-slate-500/50",
+  Instagram: "bg-pink-500/15 text-pink-300 border-pink-500/30",
+  Reddit:    "bg-orange-500/15 text-orange-300 border-orange-500/30",
+};
+
+const formatDateTime = (d: string) =>
+  new Date(d).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 function Chip({ label, style }: { label: string; style?: string }) {
   return (
@@ -65,13 +79,13 @@ function Chip({ label, style }: { label: string; style?: string }) {
 
 function emptyForm() {
   return {
-    creatorCode: "", creatorName: "", status: "New", priority: "Medium",
+    creatorCode: "", creatorName: "", status: "Active", priority: "Medium",
     needsMedia: false, needsReview: false, assignedPageRunners: "",
-    uploadsFolder: "", mediaFolder: "", overview: "",
+    uploadsFolder: "", signedPlatforms: [] as string[], overview: "",
     niche: { niche: "", aesthetic: "", styles: "" },
     assets: { physical: "", strengths: "", weaknesses: "" },
     accounts: [] as Account[],
-    strategy: { captionTone: "", dos: "", donts: "", recommendations: "", inspirations: "" },
+    strategy: { captionTone: "", dos: "", donts: "", inspirations: "" },
     notes: "",
   };
 }
@@ -81,6 +95,7 @@ function emptyForm() {
 export default function MyCreatorsPage() {
   const [creators,     setCreators]     = useState<Creator[]>([]);
   const [isAdmin,      setIsAdmin]      = useState(false);
+  const [currentEmail, setCurrentEmail] = useState("");
   const [viewArchived, setViewArchived] = useState(false);
   const [search,       setSearch]       = useState("");
   const [statusF,      setStatusF]      = useState("");
@@ -99,6 +114,13 @@ export default function MyCreatorsPage() {
   const [hlForm,        setHlForm]        = useState({ platform:"X", postLink:"", accountUsername:"", likes:"", reposts:"", views:"", comments:"", bookmarks:"", notes:"" });
   const [addingHL,      setAddingHL]      = useState(false);
 
+  // Team Notes
+  const [teamNotes,     setTeamNotes]     = useState<TeamNote[]>([]);
+  const [noteText,      setNoteText]      = useState("");
+  const [addingNote,    setAddingNote]    = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteText,  setEditNoteText]  = useState("");
+
   // ── Fetch creators ────────────────────────────────────────────────────────────
   const load = async (archived = false) => {
     const res = await fetch(`/api/creators?archived=${archived}`);
@@ -109,12 +131,18 @@ export default function MyCreatorsPage() {
     if (sessionRes.ok) {
       const s = await sessionRes.json();
       setIsAdmin(s?.user?.role === "admin");
+      setCurrentEmail(s?.user?.email ?? "");
     }
   };
 
   const loadHighlights = async (creatorId: string) => {
     const res = await fetch(`/api/highlights?creatorId=${creatorId}`);
     if (res.ok) setHighlights(await res.json());
+  };
+
+  const loadTeamNotes = async (creatorId: string) => {
+    const res = await fetch(`/api/team-notes?creatorId=${creatorId}`);
+    if (res.ok) setTeamNotes(await res.json());
   };
 
   useEffect(() => { load(viewArchived); }, [viewArchived]);
@@ -146,12 +174,13 @@ export default function MyCreatorsPage() {
       status: c.status, priority: c.priority,
       needsMedia: c.needsMedia, needsReview: c.needsReview,
       assignedPageRunners: (c.assignedPageRunners ?? []).join(", "),
-      uploadsFolder: c.uploadsFolder ?? "", mediaFolder: c.mediaFolder ?? "",
+      uploadsFolder: c.uploadsFolder ?? "",
+      signedPlatforms: c.signedPlatforms ?? [],
       overview: c.overview ?? "",
       niche:     c.niche     ?? { niche: "", aesthetic: "", styles: "" },
       assets:    c.assets    ?? { physical: "", strengths: "", weaknesses: "" },
       accounts:  c.accounts  ?? [],
-      strategy:  c.strategy  ?? { captionTone: "", dos: "", donts: "", recommendations: "", inspirations: "" },
+      strategy:  c.strategy  ?? { captionTone: "", dos: "", donts: "", inspirations: "" },
       notes: (c.strategy as any)?.notes ?? "",
     });
     setEditModal(true);
@@ -164,6 +193,7 @@ export default function MyCreatorsPage() {
       ...form,
       assignedPageRunners: form.assignedPageRunners.split(",").map((e: string) => e.trim()).filter(Boolean),
       strategy: { ...form.strategy, notes: form.notes },
+      ...(form.status === "Dropped" && { archived: true }),
     };
     let res: Response;
     try {
@@ -211,6 +241,29 @@ export default function MyCreatorsPage() {
   const openProfile = (c: Creator) => {
     setSelected(c); setProfileTab("overview"); setProfileModal(true);
     loadHighlights(c.id);
+    loadTeamNotes(c.id);
+  };
+
+  const addNote = async () => {
+    if (!selected || !noteText.trim()) return;
+    setAddingNote(true);
+    await fetch("/api/team-notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creatorId: selected.id, content: noteText }) });
+    setNoteText("");
+    setAddingNote(false);
+    loadTeamNotes(selected.id);
+  };
+
+  const saveEditNote = async (id: string) => {
+    if (!editNoteText.trim() || !selected) return;
+    await fetch("/api/team-notes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, content: editNoteText }) });
+    setEditingNoteId(null);
+    loadTeamNotes(selected.id);
+  };
+
+  const deleteNote = async (id: string) => {
+    if (!selected || !confirm("Delete this note?")) return;
+    await fetch("/api/team-notes", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    loadTeamNotes(selected.id);
   };
 
   const addHighlight = async () => {
@@ -242,6 +295,9 @@ export default function MyCreatorsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Link href="/my-creators/reports" className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:text-indigo-300 hover:border-indigo-400 transition">
+              <FileText size={15} /> Creator Reports
+            </Link>
             {isAdmin && (
               <>
                 <button
@@ -334,6 +390,7 @@ export default function MyCreatorsPage() {
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   <Chip label={c.status}   style={STATUS_STYLE[c.status]} />
                   <Chip label={c.priority} style={PRIORITY_STYLE[c.priority]} />
+                  {(c.signedPlatforms ?? []).map(p => <Chip key={p} label={p} style={PLATFORM_STYLE[p]} />)}
                   {c.needsMedia  && <Chip label="⚠ Needs Media"  style="bg-orange-500/15 text-orange-300 border-orange-500/30" />}
                   {c.needsReview && <Chip label="⚠ Needs Review" style="bg-rose-500/15 text-rose-300 border-rose-500/30" />}
                 </div>
@@ -372,6 +429,7 @@ export default function MyCreatorsPage() {
           <div className="flex flex-wrap gap-1.5 mb-4">
             <Chip label={selected.status}   style={STATUS_STYLE[selected.status]} />
             <Chip label={selected.priority} style={PRIORITY_STYLE[selected.priority]} />
+            {(selected.signedPlatforms ?? []).map(p => <Chip key={p} label={p} style={PLATFORM_STYLE[p]} />)}
             {selected.needsMedia  && <Chip label="⚠ Needs Media"  style="bg-orange-500/15 text-orange-300 border-orange-500/30" />}
             {selected.needsReview && <Chip label="⚠ Needs Review" style="bg-rose-500/15 text-rose-300 border-rose-500/30" />}
           </div>
@@ -389,7 +447,6 @@ export default function MyCreatorsPage() {
               {selected.overview && <p className="text-sm text-slate-300 leading-relaxed">{selected.overview}</p>}
               <div className="flex flex-wrap gap-3">
                 {selected.uploadsFolder && <a href={selected.uploadsFolder} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition"><ExternalLink size={12} /> Creator Uploads</a>}
-                {selected.mediaFolder   && <a href={selected.mediaFolder}   target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 transition"><ExternalLink size={12} /> Media Folder</a>}
               </div>
               {selected.niche && (
                 <div className="grid md:grid-cols-2 gap-3">
@@ -421,7 +478,7 @@ export default function MyCreatorsPage() {
                         <span className="font-semibold text-slate-200 text-sm">@{a.username}</span>
                         <Chip label={a.accountType} />
                       </div>
-                      <p className="text-xs text-slate-500">{a.platform} · {a.followers} followers</p>
+                      <p className="text-xs text-slate-500">{a.platform}</p>
                     </div>
                     {a.url && <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300"><ExternalLink size={14} /></a>}
                   </div>
@@ -525,22 +582,66 @@ export default function MyCreatorsPage() {
                       {s.dos   && <div className="bg-emerald-900/20 border border-emerald-500/20 rounded-lg p-3"><p className="text-xs text-emerald-400 font-semibold mb-2 uppercase tracking-wider">✅ Do's</p><p className="text-sm text-slate-300 whitespace-pre-wrap">{s.dos}</p></div>}
                       {s.donts && <div className="bg-rose-900/20 border border-rose-500/20 rounded-lg p-3"><p className="text-xs text-rose-400 font-semibold mb-2 uppercase tracking-wider">🚫 Don'ts</p><p className="text-sm text-slate-300 whitespace-pre-wrap">{s.donts}</p></div>}
                     </div>
-                    {s.recommendations && <div className="bg-slate-800/40 rounded-lg p-4"><p className="text-xs text-indigo-400 font-semibold mb-1 uppercase tracking-wider">Recommendations</p><p className="text-sm text-slate-300">{s.recommendations}</p></div>}
-                    {s.inspirations     && <div className="bg-slate-800/40 rounded-lg p-4"><p className="text-xs text-purple-400 font-semibold mb-1 uppercase tracking-wider">Inspirations</p><p className="text-sm text-slate-300">{s.inspirations}</p></div>}
-                    {!s.captionTone && !s.dos && !s.donts && !s.recommendations && !s.inspirations && <p className="text-sm text-slate-500">No strategy added yet.</p>}
+                    {s.inspirations && <div className="bg-slate-800/40 rounded-lg p-4"><p className="text-xs text-purple-400 font-semibold mb-1 uppercase tracking-wider">Inspirations</p><p className="text-sm text-slate-300">{s.inspirations}</p></div>}
+                    {!s.captionTone && !s.dos && !s.donts && !s.inspirations && <p className="text-sm text-slate-500">No strategy added yet.</p>}
                   </>
                 );
               })()}
             </div>
           )}
 
-          {/* Notes */}
+          {/* Team Notes */}
           {profileTab === "notes" && (
-            <div>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <textarea className="sf-input" value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a team note…" style={{ minHeight: 70 }} />
+                <button onClick={addNote} disabled={!noteText.trim() || addingNote} className="bg-indigo-600 hover:bg-indigo-500 transition text-white text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-50">
+                  {addingNote ? "Adding…" : "Add Note"}
+                </button>
+              </div>
+
               {(() => {
-                const notes = (selected.strategy as any)?.notes;
-                return notes ? <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{notes}</p> : <p className="text-sm text-slate-500">No notes added yet.</p>;
+                const legacy = (selected.strategy as any)?.notes;
+                return legacy ? (
+                  <div className="bg-slate-800/40 rounded-lg p-3">
+                    <p className="text-xs text-slate-500 mb-1">Legacy Notes</p>
+                    <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{legacy}</p>
+                  </div>
+                ) : null;
               })()}
+
+              {teamNotes.length === 0 ? (
+                <p className="text-sm text-slate-500">No team notes yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {teamNotes.map(n => (
+                    <div key={n.id} className="rounded-xl border border-slate-700/40 p-3">
+                      {editingNoteId === n.id ? (
+                        <div className="space-y-2">
+                          <textarea className="sf-input" value={editNoteText} onChange={e => setEditNoteText(e.target.value)} style={{ minHeight: 60 }} />
+                          <div className="flex gap-3">
+                            <button onClick={() => saveEditNote(n.id)} className="text-xs text-emerald-400 hover:text-emerald-300 transition">Save</button>
+                            <button onClick={() => setEditingNoteId(null)} className="text-xs text-slate-400 hover:text-slate-200 transition">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{n.content}</p>
+                          <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
+                            <span>{n.authorName} · {formatDateTime(n.createdAt)}{n.editedAt ? " (edited)" : ""}</span>
+                            {(isAdmin || n.authorEmail.toLowerCase() === currentEmail.toLowerCase()) && (
+                              <div className="flex gap-3 shrink-0">
+                                <button onClick={() => { setEditingNoteId(n.id); setEditNoteText(n.content); }} className="hover:text-indigo-400 transition">edit</button>
+                                <button onClick={() => deleteNote(n.id)} className="hover:text-rose-400 transition">delete</button>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </Modal>
@@ -559,7 +660,7 @@ function EditTabs({ form, setForm }: { form: ReturnType<typeof emptyForm>; setFo
   const setStrategy = (k: string, v: string) => setForm(p => ({ ...p, strategy: { ...(p.strategy as any), [k]: v } }));
 
   // accounts array helpers
-  const addAccount = () => setForm(p => ({ ...p, accounts: [...(p.accounts as Account[]), { platform:"X", accountType:"FBA Main", username:"", followers:"", url:"" }] }));
+  const addAccount = () => setForm(p => ({ ...p, accounts: [...(p.accounts as Account[]), { platform:"X", accountType:"FBA Main", username:"", url:"" }] }));
   const setAcc = (i: number, k: keyof Account, v: string) => setForm(p => {
     const accs = [...(p.accounts as Account[])]; accs[i] = { ...accs[i], [k]: v }; return { ...p, accounts: accs };
   });
@@ -580,7 +681,7 @@ function EditTabs({ form, setForm }: { form: ReturnType<typeof emptyForm>; setFo
             <div><label className="sf-label">Creator Name *</label><input className="sf-input" value={form.creatorName} onChange={e => f("creatorName")(e.target.value)} placeholder="Display name" /></div>
             <div><label className="sf-label">Status</label>
               <select className="sf-input" value={form.status} onChange={e => f("status")(e.target.value)}>
-                {STATUSES.map(s => <option key={s}>{s}</option>)}
+                {(CREATOR_STATUSES.includes(form.status) ? CREATOR_STATUSES : [...CREATOR_STATUSES, form.status]).map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div><label className="sf-label">Priority</label>
@@ -595,7 +696,25 @@ function EditTabs({ form, setForm }: { form: ReturnType<typeof emptyForm>; setFo
           </div>
           <div><label className="sf-label">Assigned Page Runner(s)</label><input className="sf-input" value={form.assignedPageRunners} onChange={e => f("assignedPageRunners")(e.target.value as string)} placeholder="Comma-separated emails or names" /></div>
           <div><label className="sf-label">Creator Uploads Folder</label><input className="sf-input" value={form.uploadsFolder} onChange={e => f("uploadsFolder")(e.target.value as string)} placeholder="https://…" /></div>
-          <div><label className="sf-label">Media Folder</label><input className="sf-input" value={form.mediaFolder} onChange={e => f("mediaFolder")(e.target.value as string)} placeholder="https://…" /></div>
+          <div>
+            <label className="sf-label">Signed Platforms</label>
+            <div className="flex items-center gap-4 mt-1">
+              {PLATFORMS.map(p => (
+                <label key={p} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" style={{ width: "auto" }}
+                    checked={(form.signedPlatforms as string[]).includes(p)}
+                    onChange={e => setForm(prev => ({
+                      ...prev,
+                      signedPlatforms: e.target.checked
+                        ? [...(prev.signedPlatforms as string[]), p]
+                        : (prev.signedPlatforms as string[]).filter(x => x !== p),
+                    }))}
+                  />
+                  <span className={`text-sm font-medium ${PLATFORM_STYLE[p].split(" ")[1]}`}>{p}</span>
+                </label>
+              ))}
+            </div>
+          </div>
           <div><label className="sf-label">Overview / Bio</label><textarea className="sf-input" value={form.overview} onChange={e => f("overview")(e.target.value as string)} placeholder="Brief creator overview…" /></div>
         </div>
       )}
@@ -632,7 +751,6 @@ function EditTabs({ form, setForm }: { form: ReturnType<typeof emptyForm>; setFo
                   </select>
                 </div>
                 <div><label className="sf-label text-xs">Username</label><input className="sf-input" value={a.username} onChange={e => setAcc(i, "username", e.target.value)} placeholder="@handle" /></div>
-                <div><label className="sf-label text-xs">Followers</label><input className="sf-input" value={a.followers} onChange={e => setAcc(i, "followers", e.target.value)} placeholder="e.g. 15K" /></div>
                 <div className="col-span-2"><label className="sf-label text-xs">Profile URL</label><input className="sf-input" value={a.url} onChange={e => setAcc(i, "url", e.target.value)} placeholder="https://…" /></div>
               </div>
               <button onClick={() => removeAcc(i)} className="text-xs text-rose-400/60 hover:text-rose-400 transition">Remove account</button>
@@ -649,7 +767,6 @@ function EditTabs({ form, setForm }: { form: ReturnType<typeof emptyForm>; setFo
             <div><label className="sf-label">Do's</label><textarea className="sf-input" value={(form.strategy as any).dos ?? ""} onChange={e => setStrategy("dos", e.target.value)} placeholder="One per line…" style={{ minHeight: 80 }} /></div>
             <div><label className="sf-label">Don'ts</label><textarea className="sf-input" value={(form.strategy as any).donts ?? ""} onChange={e => setStrategy("donts", e.target.value)} placeholder="One per line…" style={{ minHeight: 80 }} /></div>
           </div>
-          <div><label className="sf-label">Recommendations</label><textarea className="sf-input" value={(form.strategy as any).recommendations ?? ""} onChange={e => setStrategy("recommendations", e.target.value)} placeholder="Current strategy recommendations…" /></div>
           <div><label className="sf-label">Inspirations / References</label><textarea className="sf-input" value={(form.strategy as any).inspirations ?? ""} onChange={e => setStrategy("inspirations", e.target.value)} placeholder="Similar accounts, mood boards, viral posts…" /></div>
           <div><label className="sf-label">Team Notes (visible to all)</label><textarea className="sf-input" value={form.notes} onChange={e => f("notes")(e.target.value as string)} placeholder="Any team notes, blockers, or ongoing issues…" /></div>
         </div>

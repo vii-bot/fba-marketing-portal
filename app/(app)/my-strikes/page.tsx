@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { EmailUsernameInput } from "@/components/ui/EmailUsernameInput";
 import { formatDate, getQuarter } from "@/lib/utils";
 import Link from "next/link";
 
@@ -64,14 +65,9 @@ export default function MyStrikesPage() {
       <div className="card rounded-xl p-6 mb-6">
         <p className="text-sm text-slate-300 mb-4">Enter the email address associated with your employee account to look up your strike record.</p>
         <div className="flex flex-wrap gap-3">
-          <input
-            className="sf-input flex-1 min-w-[200px]"
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="your-email@example.com"
-            onKeyDown={e => e.key === "Enter" && lookup()}
-          />
+          <div className="flex-1 min-w-[200px]">
+            <EmailUsernameInput value={email} onChange={setEmail} onKeyDown={e => e.key === "Enter" && lookup()} />
+          </div>
           <button onClick={lookup} disabled={loading} className="bg-indigo-600 hover:bg-indigo-500 transition text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-60">
             {loading ? "Loading…" : "Look Up"}
           </button>

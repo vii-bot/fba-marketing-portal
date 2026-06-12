@@ -56,7 +56,6 @@ export default function AttendanceAdminPage() {
   const otApproved   = requests.filter(r => r.type === "OT"        && r.status === "Approved").reduce((s, r) => s + (r.hours ?? 0), 0);
   const wotApproved  = requests.filter(r => r.type === "WeekendOT" && r.status === "Approved").reduce((s, r) => s + (r.hours ?? 0), 0);
   const daysOff      = requests.filter(r => r.type === "DayOff"    && r.status === "Approved").length;
-  const offsets      = requests.filter(r => r.type === "Offset"    && r.status === "Approved").length;
 
   return (
     <div className="w-full max-w-6xl mx-auto">
@@ -72,7 +71,6 @@ export default function AttendanceAdminPage() {
           { label: "OT Hours Approved",  value: `${otApproved}h`,  color: "text-indigo-400" },
           { label: "Weekend OT Approved",value: `${wotApproved}h`, color: "text-sky-400" },
           { label: "Days Off Approved",  value: daysOff,            color: "text-emerald-400" },
-          { label: "Offsets Approved",   value: offsets,            color: "text-purple-400" },
         ].map(s => (
           <div key={s.label} className="stat-card">
             <p className="text-xs text-slate-500 uppercase mb-1">{s.label}</p>

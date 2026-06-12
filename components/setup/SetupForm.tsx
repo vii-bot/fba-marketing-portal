@@ -39,7 +39,7 @@ export default function SetupForm({ defaultName }: Props) {
   return (
     <div className="card rounded-2xl p-8 w-full max-w-md mx-auto">
       <div className="mb-6">
-        <p className="text-xs uppercase tracking-wider text-indigo-400 mb-2">Welcome to Fatbear Agency</p>
+        <p className="text-xs uppercase tracking-wider text-indigo-400 mb-2">FBA Marketing Portal</p>
         <h2 className="font-bold text-slate-100 text-xl mb-1">Create your profile</h2>
         <p className="text-sm text-slate-400">This is how your teammates will see you.</p>
       </div>

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Circle, RefreshCw, ArrowLeft, Clock } from "lucide-react";
+import { CheckCircle2, Circle, RefreshCw, ArrowLeft, Clock, AlertTriangle } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 import { BlockRenderer } from "@/components/lms/sop-builder/BlockRenderer";
 import type { SOPBlock } from "@/lib/sop-blocks";
 
@@ -15,9 +16,11 @@ interface Props {
   sop: SOP;
   acked: boolean;
   needsReack: boolean;
+  deadline?: string | null;
+  isOverdue?: boolean;
 }
 
-export default function SOPDetailClient({ sop, acked: initAcked, needsReack }: Props) {
+export default function SOPDetailClient({ sop, acked: initAcked, needsReack, deadline, isOverdue }: Props) {
   const [acked, setAcked] = useState(initAcked);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -89,6 +92,15 @@ export default function SOPDetailClient({ sop, acked: initAcked, needsReack }: P
             <>
               <span>·</span>
               <span className="text-amber-400 font-medium">Re-acknowledgement needed</span>
+            </>
+          )}
+          {!acked && deadline && (
+            <>
+              <span>·</span>
+              <span className={`flex items-center gap-1 font-medium ${isOverdue ? "text-rose-400" : "text-slate-400"}`}>
+                {isOverdue && <AlertTriangle size={11} />}
+                {isOverdue ? "Overdue — was due" : "Due"} {formatDate(deadline)}
+              </span>
             </>
           )}
         </div>

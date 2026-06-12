@@ -18,6 +18,13 @@ const variantMap: Record<string, string> = {
   terminated:       "badge-term",
   compliance:       "badge-compliance",
   attendance:       "badge-attendance",
+
+  // Employee login/setup status (lib/employee-status.ts)
+  "login active":          "badge-resolved",
+  "profile setup pending": "badge-pending",
+  "invite sent":           "badge-appealed",
+  "invite expired":        "badge-term",
+  "permissions pending":   "badge-archived",
 };
 
 export function Badge({ label, className }: { label: string; className?: string }) {

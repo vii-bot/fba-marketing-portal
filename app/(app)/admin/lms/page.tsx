@@ -4,25 +4,55 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDate, LMS_TIERS, TIER_COLORS, DEPARTMENTS, type LmsTier } from "@/lib/utils";
-import { Plus, Pencil, Archive, BookOpen, Inbox, RefreshCw, Copy, Eye, EyeOff } from "lucide-react";
+import { Plus, Pencil, Archive, BookOpen, Inbox, RefreshCw, Copy, Eye, EyeOff, UserCircle } from "lucide-react";
 
 interface SOP {
   id: string; title: string; category: string; content: string; tier: string; contentType: string;
   version: number; isRequired: boolean; isArchived: boolean; department: string;
   status: string; roles: string[]; estimatedMinutes: number | null;
+  deadlineType: string; deadlineDate: string | null; deadlineDays: number | null; deadlineBasis: string | null;
   createdBy: string; createdAt: string; updatedAt: string;
   acknowledgements: { email: string; version: number }[];
 }
 
 interface Employee { email: string; name: string; role: string; department: string; }
 
+interface ComplianceRow {
+  id: string; name: string; email: string; role: string; department: string;
+  status: "Acknowledged" | "Exempted" | "Overdue" | "Not Acknowledged";
+  deadline: string | null; exemptionId: string | null; exemptionReason: string | null;
+}
+
+const COMPLIANCE_STATUS_STYLE: Record<ComplianceRow["status"], string> = {
+  Acknowledged:     "text-emerald-400 bg-emerald-500/10",
+  Exempted:         "text-amber-400 bg-amber-500/10",
+  Overdue:          "text-rose-400 bg-rose-500/10",
+  "Not Acknowledged": "text-slate-400 bg-slate-600/20",
+};
+
+function describeDeadlineRule(sop: { deadlineType: string; deadlineDate: string | null; deadlineDays: number | null; deadlineBasis: string | null }): string {
+  if (sop.deadlineType === "Fixed" && sop.deadlineDate) {
+    return `Due ${formatDate(sop.deadlineDate)}`;
+  }
+  if (sop.deadlineType === "Relative" && sop.deadlineDays != null) {
+    const basis = sop.deadlineBasis === "Assignment" ? "each employee's assignment date" : "the publish date";
+    return `Due ${sop.deadlineDays} day${sop.deadlineDays === 1 ? "" : "s"} after ${basis}`;
+  }
+  return "No deadline configured";
+}
+
 export default function AdminLMSPage() {
   const router = useRouter();
   const [sops,      setSops]      = useState<SOP[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [tab,       setTab]       = useState<"sops"|"progress"|"assessments">("sops");
+  const [tab,       setTab]       = useState<"sops"|"progress"|"compliance"|"assessments">("sops");
   const [deptF,     setDeptF]     = useState("");
   const [tierF,     setTierF]     = useState("");
+
+  const [complianceSopId, setComplianceSopId]   = useState("");
+  const [complianceData,  setComplianceData]    = useState<{ sop: SOP; rows: ComplianceRow[] } | null>(null);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+  const [complianceSearch, setComplianceSearch] = useState("");
 
   const load = async () => {
     const [s, e] = await Promise.all([
@@ -34,6 +64,41 @@ export default function AdminLMSPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Default to the first SOP once the list has loaded
+  useEffect(() => {
+    if (!complianceSopId && sops.length > 0) setComplianceSopId(sops[0].id);
+  }, [sops, complianceSopId]);
+
+  const loadCompliance = async (sopId: string) => {
+    setComplianceLoading(true);
+    try {
+      const res = await fetch(`/api/sop-compliance?sopId=${sopId}`);
+      setComplianceData(res.ok ? await res.json() : null);
+    } finally {
+      setComplianceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === "compliance" && complianceSopId) loadCompliance(complianceSopId);
+  }, [tab, complianceSopId]);
+
+  const toggleExemption = async (row: ComplianceRow) => {
+    if (!complianceSopId) return;
+    if (row.exemptionId) {
+      await fetch("/api/sop-exemptions", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: row.exemptionId }),
+      });
+    } else {
+      await fetch("/api/sop-exemptions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sopId: complianceSopId, email: row.email }),
+      });
+    }
+    loadCompliance(complianceSopId);
+  };
 
   const bumpVersion = async (id: string) => {
     if (!confirm("Bump version? This will invalidate all existing acknowledgements and require re-acknowledgement.")) return;
@@ -105,7 +170,7 @@ export default function AdminLMSPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1 mb-6">
-        {(["sops","progress","assessments"] as const).map(t => (
+        {(["sops","progress","compliance","assessments"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition capitalize ${tab === t ? "bg-slate-700 text-slate-200" : "text-slate-500 hover:text-slate-300"}`}>{t}</button>
         ))}
       </div>
@@ -199,6 +264,85 @@ export default function AdminLMSPage() {
               </div>
             )}
           </div>
+        </>
+      )}
+
+      {/* Compliance tab */}
+      {tab === "compliance" && (
+        <>
+          <div className="card rounded-xl p-4 mb-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              <select className="db-filter" value={complianceSopId} onChange={e => setComplianceSopId(e.target.value)}>
+                {sops.length === 0 && <option value="">No SOPs / courses</option>}
+                {sops.map(s => (
+                  <option key={s.id} value={s.id}>{s.title}{s.deadlineType === "None" ? " (no deadline)" : ""}</option>
+                ))}
+              </select>
+              <input
+                className="db-filter flex-1 min-w-[180px]" placeholder="Search employee name or email…"
+                value={complianceSearch} onChange={e => setComplianceSearch(e.target.value)}
+              />
+            </div>
+            {complianceData && (
+              <p className="text-xs text-slate-500 mt-2">{describeDeadlineRule(complianceData.sop)}</p>
+            )}
+          </div>
+
+          {complianceLoading ? (
+            <div className="card rounded-xl py-12 text-center text-slate-500"><p className="text-sm">Loading…</p></div>
+          ) : !complianceData || complianceData.rows.length === 0 ? (
+            <div className="card rounded-xl py-12 text-center text-slate-500">
+              <Inbox size={36} className="mx-auto mb-2 opacity-25" />
+              <p className="text-sm">No employees can view this {complianceData?.sop.contentType?.toLowerCase() ?? "item"}.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                {(["Acknowledged","Not Acknowledged","Overdue","Exempted"] as const).map(st => (
+                  <div key={st} className="stat-card">
+                    <p className="text-xs text-slate-500 uppercase mb-1">{st}</p>
+                    <p className="text-3xl font-bold text-indigo-300">{complianceData.rows.filter(r => r.status === st).length}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="card rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="data-table">
+                    <thead><tr><th>Employee</th><th>Department</th><th>Role</th><th>Status</th><th>Deadline</th><th>Action</th><th></th></tr></thead>
+                    <tbody>
+                      {complianceData.rows
+                        .filter(r => {
+                          const q = complianceSearch.trim().toLowerCase();
+                          return !q || r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
+                        })
+                        .map(r => (
+                          <tr key={r.id}>
+                            <td><div className="text-slate-200">{r.name}</div><div className="text-xs text-slate-500">{r.email}</div></td>
+                            <td>{r.department}</td>
+                            <td className="text-xs">{r.role}</td>
+                            <td><span className={`text-xs px-1.5 py-0.5 rounded ${COMPLIANCE_STATUS_STYLE[r.status]}`}>{r.status}</span></td>
+                            <td className="text-xs text-slate-400">{r.deadline ? formatDate(r.deadline) : "—"}</td>
+                            <td>
+                              {r.status !== "Acknowledged" && (
+                                <button onClick={() => toggleExemption(r)} className={`text-xs font-medium ${r.exemptionId ? "text-rose-400 hover:text-rose-300" : "text-amber-400 hover:text-amber-300"}`}>
+                                  {r.exemptionId ? "Remove exemption" : "Exempt"}
+                                </button>
+                              )}
+                            </td>
+                            <td>
+                              <Link href={`/admin/employees/${r.id}`} title="View profile" className="text-indigo-400 hover:text-indigo-300 transition p-1 inline-flex">
+                                <UserCircle size={14} />
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
 

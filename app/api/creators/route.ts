@@ -46,11 +46,13 @@ export async function POST(req: NextRequest) {
         assignedPageRunners: body.assignedPageRunners ?? [],
         uploadsFolder:       body.uploadsFolder ?? null,
         mediaFolder:         body.mediaFolder ?? null,
+        signedPlatforms:     body.signedPlatforms ?? [],
         overview:            body.overview ?? null,
         niche:               body.niche ?? null,
         assets:              body.assets ?? null,
         accounts:            body.accounts ?? null,
         strategy:            body.strategy ?? null,
+        archived:            body.archived ?? false,
       },
     });
     return NextResponse.json(creator, { status: 201 });

@@ -116,12 +116,18 @@ export async function PATCH(req: NextRequest) {
       data.startTime = now;
     }
 
+    if (body.status === "Paused" && existing.startTime) {
+      const elapsed = Math.round((now.getTime() - existing.startTime.getTime()) / 60000);
+      data.pausedMinutes = existing.pausedMinutes + elapsed;
+      data.startTime = null;
+    }
+
     if (body.status === "Finished") {
       const startTime = existing.startTime ?? now;
-      const finishTime = existing.finishTime ?? now;
       if (!existing.startTime) data.startTime = startTime;
-      data.finishTime = finishTime;
-      data.totalMinutes = Math.round((finishTime.getTime() - startTime.getTime()) / 60000);
+      const elapsed = Math.round((now.getTime() - startTime.getTime()) / 60000);
+      data.finishTime = existing.finishTime ?? now;
+      data.totalMinutes = existing.pausedMinutes + elapsed;
     }
   }
 

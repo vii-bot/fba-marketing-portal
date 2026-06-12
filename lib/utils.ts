@@ -215,7 +215,7 @@ export function adjustToPayPeriod(dateStr: string): string {
 
 // ── Taskboard / Time Tracking ─────────────────────────────────────────────────
 
-export const TASK_STATUSES = ["Pending", "In Progress", "Finished"];
+export const TASK_STATUSES = ["Pending", "In Progress", "Paused", "Finished"];
 
 // Open-ended but controlled vocabulary so the admin efficiency dashboard can
 // group/compare "per task type" — the form always offers an "Other" free-text

@@ -7,12 +7,13 @@ import { TASK_CATEGORIES, formatMinutes, todayLocalDate } from "@/lib/utils";
 interface TaskRecord {
   id: string; taskName: string; category: string; notes: string | null;
   status: string; startTime: string | null; finishTime: string | null;
-  totalMinutes: number | null; createdAt: string;
+  pausedMinutes: number; totalMinutes: number | null; createdAt: string;
 }
 
 const STATUS_STYLE: Record<string, string> = {
   Pending:      "text-amber-400 bg-amber-500/10",
   "In Progress": "text-sky-400 bg-sky-500/10",
+  Paused:       "text-orange-400 bg-orange-500/10",
   Finished:     "text-emerald-400 bg-emerald-500/10",
 };
 
@@ -193,8 +194,8 @@ function TaskRow({
 }) {
   const elapsed = useMemo(() => {
     if (task.status !== "In Progress" || !task.startTime) return null;
-    return Math.floor((now - new Date(task.startTime).getTime()) / 60000);
-  }, [task.status, task.startTime, now]);
+    return task.pausedMinutes + Math.floor((now - new Date(task.startTime).getTime()) / 60000);
+  }, [task.status, task.startTime, task.pausedMinutes, now]);
 
   return (
     <div className="bg-slate-800/40 rounded-lg p-4">
@@ -210,6 +211,7 @@ function TaskRow({
         <p className="text-xs text-slate-500">
           {task.status === "Pending" && "Not started yet"}
           {task.status === "In Progress" && `Started ${formatTime(task.startTime)} · ${formatMinutes(elapsed)} elapsed`}
+          {task.status === "Paused" && `Paused · ${formatMinutes(task.pausedMinutes)} elapsed`}
           {task.status === "Finished" && `${formatTime(task.startTime)} – ${formatTime(task.finishTime)} · ${formatMinutes(task.totalMinutes)} total`}
         </p>
         <div className="flex items-center gap-3 shrink-0">
@@ -220,7 +222,16 @@ function TaskRow({
             </>
           )}
           {task.status === "In Progress" && (
-            <button onClick={() => onUpdate(task.id, "Finished")} className="text-xs text-emerald-400 hover:text-emerald-300">Finish</button>
+            <>
+              <button onClick={() => onUpdate(task.id, "Paused")} className="text-xs text-orange-400 hover:text-orange-300">Pause</button>
+              <button onClick={() => onUpdate(task.id, "Finished")} className="text-xs text-emerald-400 hover:text-emerald-300">Finish</button>
+            </>
+          )}
+          {task.status === "Paused" && (
+            <>
+              <button onClick={() => onUpdate(task.id, "In Progress")} className="text-xs text-sky-400 hover:text-sky-300">Resume</button>
+              <button onClick={() => onUpdate(task.id, "Finished")} className="text-xs text-emerald-400 hover:text-emerald-300">Finish</button>
+            </>
           )}
         </div>
       </div>

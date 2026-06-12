@@ -11,12 +11,13 @@ interface TaskRecord {
   id: string; email: string; name: string; department: string;
   taskName: string; category: string; notes: string | null;
   status: string; startTime: string | null; finishTime: string | null;
-  totalMinutes: number | null; createdAt: string;
+  pausedMinutes: number; totalMinutes: number | null; createdAt: string;
 }
 
 const STATUS_STYLE: Record<string, string> = {
   Pending:      "text-amber-400 bg-amber-500/10",
   "In Progress": "text-sky-400 bg-sky-500/10",
+  Paused:       "text-orange-400 bg-orange-500/10",
   Finished:     "text-emerald-400 bg-emerald-500/10",
 };
 
@@ -62,19 +63,21 @@ export default function AdminTaskboardPage() {
       total: filteredTasks.length,
       pending: filteredTasks.filter(t => t.status === "Pending").length,
       inProgress: filteredTasks.filter(t => t.status === "In Progress").length,
+      paused: filteredTasks.filter(t => t.status === "Paused").length,
       finished: finished.length,
       totalMinutes: finished.reduce((sum, t) => sum + (t.totalMinutes ?? 0), 0),
     };
   }, [filteredTasks]);
 
   const byEmployee = useMemo(() => {
-    const map = new Map<string, { name: string; department: string; pending: number; inProgress: number; finished: number; totalMinutes: number }>();
+    const map = new Map<string, { name: string; department: string; pending: number; inProgress: number; paused: number; finished: number; totalMinutes: number }>();
     for (const t of filteredTasks) {
       const key = t.email;
-      if (!map.has(key)) map.set(key, { name: t.name, department: t.department, pending: 0, inProgress: 0, finished: 0, totalMinutes: 0 });
+      if (!map.has(key)) map.set(key, { name: t.name, department: t.department, pending: 0, inProgress: 0, paused: 0, finished: 0, totalMinutes: 0 });
       const e = map.get(key)!;
       if (t.status === "Pending") e.pending++;
       if (t.status === "In Progress") e.inProgress++;
+      if (t.status === "Paused") e.paused++;
       if (t.status === "Finished") { e.finished++; e.totalMinutes += t.totalMinutes ?? 0; }
     }
     return Array.from(map.entries()).map(([email, v]) => ({ email, ...v }));
@@ -136,10 +139,11 @@ export default function AdminTaskboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
         <div className="stat-card"><p className="text-xs text-slate-500 uppercase mb-1">Total Tasks</p><p className="text-3xl font-bold text-slate-200">{stats.total}</p></div>
         <div className="stat-card"><p className="text-xs text-slate-500 uppercase mb-1">Pending</p><p className="text-3xl font-bold text-amber-400">{stats.pending}</p></div>
         <div className="stat-card"><p className="text-xs text-slate-500 uppercase mb-1">In Progress</p><p className="text-3xl font-bold text-sky-400">{stats.inProgress}</p></div>
+        <div className="stat-card"><p className="text-xs text-slate-500 uppercase mb-1">Paused</p><p className="text-3xl font-bold text-orange-400">{stats.paused}</p></div>
         <div className="stat-card"><p className="text-xs text-slate-500 uppercase mb-1">Finished</p><p className="text-3xl font-bold text-emerald-400">{stats.finished}</p></div>
         <div className="stat-card"><p className="text-xs text-slate-500 uppercase mb-1">Time Logged</p><p className="text-3xl font-bold text-indigo-300">{formatMinutes(stats.totalMinutes)}</p></div>
       </div>
@@ -152,7 +156,7 @@ export default function AdminTaskboardPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table">
-              <thead><tr><th>Employee</th><th>Department</th><th>Finished</th><th>In Progress</th><th>Pending</th><th>Total Time</th></tr></thead>
+              <thead><tr><th>Employee</th><th>Department</th><th>Finished</th><th>In Progress</th><th>Paused</th><th>Pending</th><th>Total Time</th></tr></thead>
               <tbody>
                 {byEmployee.map(e => (
                   <tr key={e.email}>
@@ -163,6 +167,7 @@ export default function AdminTaskboardPage() {
                     <td className="text-xs">{e.department}</td>
                     <td className="text-emerald-400 text-xs font-semibold">{e.finished}</td>
                     <td className="text-sky-400 text-xs font-semibold">{e.inProgress}</td>
+                    <td className="text-orange-400 text-xs font-semibold">{e.paused}</td>
                     <td className="text-amber-400 text-xs font-semibold">{e.pending}</td>
                     <td className="text-xs">{formatMinutes(e.totalMinutes)}</td>
                   </tr>
@@ -196,7 +201,7 @@ export default function AdminTaskboardPage() {
                     <td><span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLE[t.status] ?? "text-slate-400 bg-slate-600/20"}`}>{t.status}</span></td>
                     <td className="text-xs">{formatTime(t.startTime)}</td>
                     <td className="text-xs">{formatTime(t.finishTime)}</td>
-                    <td className="text-xs">{formatMinutes(t.totalMinutes)}</td>
+                    <td className="text-xs">{t.status === "Paused" ? formatMinutes(t.pausedMinutes) : formatMinutes(t.totalMinutes)}</td>
                     <td className="max-w-xs truncate text-xs text-slate-400">{t.notes ?? "—"}</td>
                   </tr>
                 ))}

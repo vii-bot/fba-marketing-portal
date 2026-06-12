@@ -263,23 +263,25 @@ model ContractorChangeRequest {
 // Daily task log for time tracking. `date` is the employee's local "shift
 // day" (stored at UTC midnight) so the taskboard and end-of-shift export
 // line up with what the employee sees regardless of server timezone.
-// `startTime`/`finishTime`/`totalMinutes` are set automatically as `status`
-// moves Pending -> In Progress -> Finished (see /api/tasks).
+// `startTime`/`finishTime`/`totalMinutes`/`pausedMinutes` are set
+// automatically as `status` moves Pending -> In Progress -> Paused ->
+// In Progress -> ... -> Finished (see /api/tasks).
 model Task {
-  id           String    @id @default(cuid())
-  email        String
-  name         String
-  department   String    @default("X")
-  date         DateTime
-  taskName     String
-  category     String
-  notes        String?
-  status       String    @default("Pending") // Pending | In Progress | Finished
-  startTime    DateTime?
-  finishTime   DateTime?
-  totalMinutes Int?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  email         String
+  name          String
+  department    String    @default("X")
+  date          DateTime
+  taskName      String
+  category      String
+  notes         String?
+  status        String    @default("Pending") // Pending | In Progress | Paused | Finished
+  startTime     DateTime?
+  finishTime    DateTime?
+  pausedMinutes Int       @default(0) // minutes accumulated across completed In Progress sessions before the current one
+  totalMinutes  Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   employeeId String?
   employee   Employee? @relation(fields: [employeeId], references: [id])

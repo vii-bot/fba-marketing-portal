@@ -5,7 +5,7 @@ import { canManageCreatorReports, type PermUser } from "@/lib/permissions";
 import { logAudit } from "@/lib/audit";
 
 // Logs a Creator Reports export (bugs.md Phase 10 audit requirement). The
-// CSV itself is generated client-side from the already-fetched/filtered
+// .txt file itself is generated client-side from the already-fetched/filtered
 // report list — this endpoint just records who exported what.
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });

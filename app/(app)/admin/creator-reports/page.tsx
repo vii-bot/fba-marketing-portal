@@ -2,16 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { FileText, Download, AlertTriangle } from "lucide-react";
-import { formatDate, REPORT_TYPES, REPORT_STATUSES, ACTIVE_DEPARTMENTS, getWeekRange, todayLocalDate } from "@/lib/utils";
+import { FileText, Download, AlertTriangle, ShieldCheck } from "lucide-react";
+import { formatDate, REPORT_TYPES, REPORT_STATUSES, ACTIVE_DEPARTMENTS, getWeekRange, todayLocalDate, getReportSections } from "@/lib/utils";
 import { isAdmin, type PermUser } from "@/lib/permissions";
 
-interface ReportHighlight { performance: string; link: string; notes: string }
+// Shape varies by platform — see lib/utils.ts HIGHLIGHT_FIELDS.
+type ReportHighlight = Record<string, string | undefined>;
 interface CreatorReport {
   id: string; creatorId: string; creatorCode: string; creatorName: string;
   accountUsername: string; department: string; reportType: string; status: string;
-  followerCount: number; followerChange: string | null; summary: string;
-  highlights: ReportHighlight[] | null; whatsWorking: string | null; actionItems: string | null;
+  followerCount: number | null; followerChange: string | null; summary: string | null;
+  highlights: ReportHighlight[] | null; metrics: Record<string, unknown> | null;
+  trafficNotes: string | null; whatsWorking: string | null; whatsNotWorking: string | null;
+  needsTesting: string | null; actionItems: string | null; recommendedFocus: string | null;
   additionalNotes: string | null; links: string[] | null; relayed: boolean;
   reviewerNotes: string | null; submittedBy: string; submittedByName: string; submittedAt: string;
 }
@@ -31,29 +34,40 @@ const emptyFilters = () => ({
   creatorId: "", accountUsername: "", department: "", reportType: "", status: "", submittedBy: "", from: "", to: "",
 });
 
-function highlightsToText(highlights: ReportHighlight[] | null): string {
-  return (highlights ?? [])
-    .map(h => `${h.performance}${h.link ? ` (${h.link})` : ""}${h.notes ? ` - ${h.notes}` : ""}`)
-    .join(" | ");
-}
-
-function csvEscape(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
-function toCSV(reports: CreatorReport[]): string {
-  const headers = [
-    "Creator Name", "FBA ID", "Account Username", "Department", "Report Type", "Status",
-    "Submitted By", "Submitted Date", "Follower Count", "Follower Change", "Summary",
-    "Account Highlights", "What's Working", "Action Items", "Additional Notes", "Links",
+function reportToText(r: CreatorReport): string {
+  const lines = [
+    `Creator: ${r.creatorName} (${r.creatorCode})`,
+    `Account: @${r.accountUsername} · ${r.department}`,
+    `Report Type: ${r.reportType}`,
+    `Status: ${r.status}`,
+    `Submitted By: ${r.submittedByName} (${r.submittedBy}) on ${formatDate(r.submittedAt)}`,
   ];
-  const rows = reports.map(r => [
-    r.creatorName, r.creatorCode, r.accountUsername, r.department, r.reportType, r.status,
-    r.submittedByName, formatDate(r.submittedAt), String(r.followerCount), r.followerChange ?? "",
-    r.summary, highlightsToText(r.highlights), r.whatsWorking ?? "", r.actionItems ?? "",
-    r.additionalNotes ?? "", (r.links ?? []).join(" | "),
-  ]);
-  return [headers, ...rows].map(row => row.map(csvEscape).join(",")).join("\r\n");
+  for (const section of getReportSections(r)) {
+    lines.push("", `${section.title}:`);
+    for (const item of section.items) {
+      lines.push(item.label ? `  ${item.label}: ${item.value}` : `  ${item.value}`);
+    }
+  }
+  if ((r.links ?? []).length > 0) {
+    lines.push("", "Links:");
+    for (const l of r.links ?? []) lines.push(`  ${l}`);
+  }
+  if (r.reviewerNotes) lines.push("", `Reviewer Notes: ${r.reviewerNotes}`);
+  return lines.join("\n");
+}
+
+function toTXT(reports: CreatorReport[]): string {
+  const divider = `\n${"─".repeat(60)}\n\n`;
+  return reports.map(reportToText).join(divider);
+}
+
+function downloadTXT(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function AdminCreatorReportsPage() {
@@ -69,6 +83,9 @@ export default function AdminCreatorReportsPage() {
   const [reviewStatus, setReviewStatus] = useState("");
   const [reviewNotes, setReviewNotes]   = useState("");
   const [reviewRelayed, setReviewRelayed] = useState(false);
+
+  const [complianceRunning, setComplianceRunning] = useState(false);
+  const [complianceResult, setComplianceResult] = useState<{ checked: number; strikesIssued: number; alreadyLogged: number } | null>(null);
 
   const setFilter = (key: keyof ReturnType<typeof emptyFilters>, value: string) =>
     setFilters(f => ({ ...f, [key]: value }));
@@ -148,20 +165,22 @@ export default function AdminCreatorReportsPage() {
     fetch("/api/creator-reports").then(r => r.ok && r.json()).then(d => d && setAllReports(d));
   };
 
-  const exportCSV = async () => {
+  const exportTXT = async () => {
     setExporting(true);
     await fetch("/api/creator-reports/export", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filters, count: reports.length, format: "CSV" }),
+      body: JSON.stringify({ filters, count: reports.length, format: "TXT" }),
     });
-    const csv = toCSV(reports);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `creator-reports-${todayLocalDate()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadTXT(toTXT(reports), `creator-reports-${todayLocalDate()}.txt`);
     setExporting(false);
+  };
+
+  const runComplianceCheck = async () => {
+    setComplianceRunning(true);
+    setComplianceResult(null);
+    const res = await fetch("/api/creator-reports/compliance-check", { method: "POST" });
+    if (res.ok) setComplianceResult(await res.json());
+    setComplianceRunning(false);
   };
 
   return (
@@ -194,6 +213,31 @@ export default function AdminCreatorReportsPage() {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Weekly compliance check */}
+      {isAdminUser && (
+        <div className="card rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={16} className="text-indigo-400" />
+              <h4 className="font-semibold text-slate-200 text-sm">Weekly Compliance Check</h4>
+            </div>
+            <button onClick={runComplianceCheck} disabled={complianceRunning} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 transition text-white text-xs font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40">
+              <ShieldCheck size={14} /> {complianceRunning ? "Running…" : "Run Weekly Compliance Check"}
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            Issues a Compliance strike to any page runner who missed their mandatory Mon-Wed Creator Report for the most recently completed week. Safe to run more than once — already-logged weeks are skipped.
+          </p>
+          {complianceResult && (
+            <p className="text-xs text-slate-300 mt-3">
+              Checked {complianceResult.checked} account{complianceResult.checked === 1 ? "" : "s"} ·{" "}
+              <span className="text-rose-400">{complianceResult.strikesIssued} strike{complianceResult.strikesIssued === 1 ? "" : "s"} issued</span> ·{" "}
+              {complianceResult.alreadyLogged} already logged
+            </p>
+          )}
         </div>
       )}
 
@@ -245,8 +289,8 @@ export default function AdminCreatorReportsPage() {
         </div>
         <div className="flex gap-2 ml-auto">
           <button onClick={() => setFilters(emptyFilters())} className="px-4 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-xs hover:border-indigo-400 transition">Reset</button>
-          <button onClick={exportCSV} disabled={exporting || reports.length === 0} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 transition text-white text-xs font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40">
-            <Download size={14} /> {exporting ? "Exporting…" : "Export CSV"}
+          <button onClick={exportTXT} disabled={exporting || reports.length === 0} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 transition text-white text-xs font-semibold px-4 py-2.5 rounded-xl disabled:opacity-40">
+            <Download size={14} /> {exporting ? "Exporting…" : "Export All (.txt)"}
           </button>
         </div>
       </div>
@@ -278,7 +322,7 @@ export default function AdminCreatorReportsPage() {
                     <td className="text-xs">{r.department}</td>
                     <td className="text-xs text-indigo-300">{r.reportType}</td>
                     <td><span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLE[r.status] ?? "text-slate-400 bg-slate-600/20"}`}>{r.status}</span></td>
-                    <td className="text-xs">{r.followerCount.toLocaleString()}{r.followerChange ? ` (${r.followerChange})` : ""}</td>
+                    <td className="text-xs">{r.followerCount !== null ? r.followerCount.toLocaleString() : "—"}{r.followerChange ? ` (${r.followerChange})` : ""}</td>
                     <td>
                       <div className="text-slate-200 text-xs">{r.submittedByName}</div>
                       <div className="text-xs text-slate-500">{r.submittedBy}</div>
@@ -298,6 +342,12 @@ export default function AdminCreatorReportsPage() {
       <Modal open={!!reviewId} onClose={() => setReviewId(null)} title="Review Creator Report" maxWidth="max-w-2xl"
         footer={<>
           <button onClick={confirmReview} className="flex-1 bg-indigo-600 hover:bg-indigo-500 transition text-white font-semibold py-2.5 rounded-xl text-sm">Save</button>
+          <button
+            onClick={() => activeReport && downloadTXT(toTXT([activeReport]), `creator-report-${activeReport.creatorCode}-${activeReport.accountUsername}-${todayLocalDate()}.txt`)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm hover:border-indigo-400 transition"
+          >
+            <Download size={14} /> Export .txt
+          </button>
           <button onClick={() => setReviewId(null)} className="px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm">Cancel</button>
         </>}>
         {activeReport && (
@@ -307,21 +357,18 @@ export default function AdminCreatorReportsPage() {
               <p><span className="text-slate-500">Account:</span> @{activeReport.accountUsername} · {activeReport.department}</p>
               <p><span className="text-slate-500">Report Type:</span> {activeReport.reportType}</p>
               <p><span className="text-slate-500">Submitted By:</span> {activeReport.submittedByName} ({activeReport.submittedBy}) on {formatDate(activeReport.submittedAt)}</p>
-              <p><span className="text-slate-500">Followers:</span> {activeReport.followerCount.toLocaleString()}{activeReport.followerChange ? ` (${activeReport.followerChange})` : ""}</p>
-              <div><span className="text-slate-500">Summary:</span><p className="whitespace-pre-wrap mt-1">{activeReport.summary}</p></div>
-              {(activeReport.highlights ?? []).length > 0 && (
-                <div>
-                  <span className="text-slate-500">Account Highlights:</span>
-                  <ul className="list-disc list-inside mt-1 space-y-0.5">
-                    {(activeReport.highlights ?? []).map((h, i) => (
-                      <li key={i}>{h.performance}{h.link ? ` — ${h.link}` : ""}{h.notes ? ` (${h.notes})` : ""}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {activeReport.whatsWorking && <div><span className="text-slate-500">What&apos;s Working:</span><p className="whitespace-pre-wrap mt-1">{activeReport.whatsWorking}</p></div>}
-              {activeReport.actionItems && <div><span className="text-slate-500">Action Items:</span><p className="whitespace-pre-wrap mt-1">{activeReport.actionItems}</p></div>}
-              {activeReport.additionalNotes && <div><span className="text-slate-500">Additional Notes:</span><p className="whitespace-pre-wrap mt-1">{activeReport.additionalNotes}</p></div>}
+              {getReportSections(activeReport).map((sec, i) => (
+                sec.items.length === 1 && sec.items[0].label === "" ? (
+                  <div key={i}><span className="text-slate-500">{sec.title}:</span><p className="whitespace-pre-wrap mt-1">{sec.items[0].value}</p></div>
+                ) : (
+                  <div key={i}>
+                    <span className="text-slate-500">{sec.title}:</span>
+                    <ul className="list-disc list-inside mt-1 space-y-0.5">
+                      {sec.items.map((it, j) => <li key={j}>{it.label ? `${it.label}: ` : ""}{it.value}</li>)}
+                    </ul>
+                  </div>
+                )
+              ))}
               {(activeReport.links ?? []).length > 0 && (
                 <div>
                   <span className="text-slate-500">Links:</span>

@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Calendar, Users2, BookOpen, ShieldCheck,
-  GraduationCap, LogOut, User, X, Menu, Bell, FileText, Inbox, Briefcase, ListTodo, Library,
+  GraduationCap, LogOut, User, X, Menu, Bell, FileText, ListTodo, Library,
 } from "lucide-react";
 import { cn, MANAGER_ROLES } from "@/lib/utils";
-import { canManageContractors, canManageCreatorReports, canAccessInternalDocs } from "@/lib/permissions";
+import { canManageCreatorReports, canAccessInternalDocs } from "@/lib/permissions";
 import { signOut, useSession } from "@/lib/auth-client";
 import type { SessionUser } from "@/lib/auth-client";
 import { useState, useEffect } from "react";
@@ -25,8 +25,18 @@ const MAIN_NAV: NavItem[] = [
   { href: "/tasks",           label: "My Taskboard",    icon: <ListTodo size={16} /> },
   { href: "/my-creators",     label: "My Creators",     icon: <Users2 size={16} /> },
   { href: "/resource-portal", label: "Resource Portal", icon: <BookOpen size={16} /> },
-  { href: "/requests",        label: "My Requests",     icon: <FileText size={16} /> },
 ];
+
+// Shown to anyone canAccessInternalDocs() authorizes (Admin, Executive,
+// Department Head/Manager/Account Manager — the latter only see pages
+// explicitly granted to their role). For admins it's folded directly into
+// ADMIN_NAV; non-admins with access get it as a standalone item below.
+const INTERNAL_DOCS_NAV: NavItem = {
+  href: "/admin/internal-docs",
+  label: "Internal Documentation",
+  icon: <Library size={16} />,
+  match: (p) => p.startsWith("/admin/internal-docs"),
+};
 
 const ADMIN_NAV: NavItem[] = [
   {
@@ -41,18 +51,7 @@ const ADMIN_NAV: NavItem[] = [
     icon: <GraduationCap size={16} />,
     match: (p) => p.startsWith("/admin/lms"),
   },
-  {
-    href: "/admin/requests",
-    label: "Employee Requests",
-    icon: <Inbox size={16} />,
-    match: (p) => p.startsWith("/admin/requests"),
-  },
-  {
-    href: "/admin/tasks",
-    label: "Taskboard",
-    icon: <ListTodo size={16} />,
-    match: (p) => p.startsWith("/admin/tasks"),
-  },
+  INTERNAL_DOCS_NAV,
 ];
 
 // Department Heads/Managers/Account Managers don't get the full admin
@@ -66,36 +65,14 @@ const DEPT_MANAGER_NAV: NavItem[] = [
   },
 ];
 
-// Shown to anyone canManageContractors() authorizes (Admin, Executive,
-// Department Head/Manager, Account Manager, TA/Payroll Manager) — added
-// separately since "Marketing Executive" and "TA/Payroll Manager" fall
-// outside both ADMIN_NAV and DEPT_MANAGER_NAV's local role checks below.
-const CONTRACTOR_REQUESTS_NAV: NavItem = {
-  href: "/admin/contractor-requests",
-  label: "Contractor Requests",
-  icon: <Briefcase size={16} />,
-  match: (p) => p.startsWith("/admin/contractor-requests"),
-};
-
 // Shown to anyone canManageCreatorReports() authorizes (Admin, Executive,
-// Department Head/Manager, Account Manager) — added separately for the same
-// reason as CONTRACTOR_REQUESTS_NAV above.
+// Department Head/Manager, Account Manager) — added separately since these
+// roles fall outside both ADMIN_NAV and DEPT_MANAGER_NAV's local role checks.
 const CREATOR_REPORTS_NAV: NavItem = {
   href: "/admin/creator-reports",
-  label: "Creator Reports",
+  label: "View Creator Reports",
   icon: <FileText size={16} />,
   match: (p) => p.startsWith("/admin/creator-reports"),
-};
-
-// Shown to anyone canAccessInternalDocs() authorizes (Admin, Executive,
-// Department Head/Manager/Account Manager — the latter only see pages
-// explicitly granted to their role) — added separately for the same reason
-// as CONTRACTOR_REQUESTS_NAV above.
-const INTERNAL_DOCS_NAV: NavItem = {
-  href: "/admin/internal-docs",
-  label: "Internal Documentation",
-  icon: <Library size={16} />,
-  match: (p) => p.startsWith("/admin/internal-docs"),
 };
 
 function NavLink({
@@ -133,7 +110,6 @@ export default function Sidebar() {
 
   const isAdmin      = user?.role === "admin";
   const isDeptManager = user?.role ? MANAGER_ROLES.includes(user.role) : false;
-  const canAccessContractorRequests = user ? canManageContractors({ role: user.role, department: user.department, email: user.email }) : false;
   const canAccessCreatorReports = user ? canManageCreatorReports({ role: user.role, department: user.department, email: user.email }) : false;
   const canAccessDocs = user ? canAccessInternalDocs({ role: user.role, department: user.department, email: user.email }) : false;
   const close   = () => setOpen(false);
@@ -176,7 +152,7 @@ export default function Sidebar() {
             <NavLink key={item.href} item={item} pathname={pathname} onClose={close} />
           ))}
 
-          {(isAdmin || isDeptManager || canAccessContractorRequests || canAccessCreatorReports || canAccessDocs) && (
+          {(isAdmin || isDeptManager || canAccessCreatorReports || canAccessDocs) && (
             <>
               <div className="pt-3 pb-1 px-3">
                 <p className="text-xs uppercase tracking-widest text-slate-600 font-semibold">Admin</p>
@@ -184,13 +160,10 @@ export default function Sidebar() {
               {(isAdmin ? ADMIN_NAV : isDeptManager ? DEPT_MANAGER_NAV : []).map(item => (
                 <NavLink key={item.href} item={item} pathname={pathname} onClose={close} />
               ))}
-              {canAccessContractorRequests && (
-                <NavLink item={CONTRACTOR_REQUESTS_NAV} pathname={pathname} onClose={close} />
-              )}
               {canAccessCreatorReports && (
                 <NavLink item={CREATOR_REPORTS_NAV} pathname={pathname} onClose={close} />
               )}
-              {canAccessDocs && (
+              {canAccessDocs && !isAdmin && (
                 <NavLink item={INTERNAL_DOCS_NAV} pathname={pathname} onClose={close} />
               )}
             </>

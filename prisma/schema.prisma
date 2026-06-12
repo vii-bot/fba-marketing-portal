@@ -361,12 +361,17 @@ model CreatorReport {
   department      String
   reportType      String // Internal Report | Creator Report
   status          String    @default("Submitted") // Draft | Submitted | Needs Revision | Approved for Creator | Sent to Creator | Archived
-  followerCount   Int
+  followerCount   Int? // Instagram only — not the primary signal for X/Reddit
   followerChange  String?
-  summary         String    @db.Text
-  highlights      Json? // [{ performance, link, notes }]
+  summary         String?   @db.Text // Performance Summary
+  highlights      Json? // Top Highlights — shape varies by platform, see lib/utils.ts HIGHLIGHT_FIELDS
+  metrics         Json? // Instagram-only engagement metrics: { reach, likes, comments, shares, saves, storyViews }
+  trafficNotes    String?   @db.Text // Traffic / Conversion Notes
   whatsWorking    String?   @db.Text
+  whatsNotWorking String?   @db.Text
+  needsTesting    String?   @db.Text // What Needs Testing
   actionItems     String?   @db.Text
+  recommendedFocus String?  @db.Text // Creator Report only
   additionalNotes String?   @db.Text
   links           Json? // string[]
   relayed         Boolean   @default(false)
@@ -380,6 +385,21 @@ model CreatorReport {
   updatedAt       DateTime  @updatedAt
 
   creator Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+}
+
+// Tracks which creator/account/week combinations have already had a
+// compliance strike issued for a missing Mon-Wed Creator Report, so the
+// admin-triggered "Run Weekly Compliance Check" doesn't double-strike on
+// repeat clicks.
+model ComplianceStrikeLog {
+  id              String   @id @default(cuid())
+  creatorId       String
+  accountUsername String
+  weekStart       DateTime
+  strikeId        String?
+  createdAt       DateTime @default(now())
+
+  @@unique([creatorId, accountUsername, weekStart])
 }
 
 // ──────────────────────────────────────────────────────────────

@@ -1,20 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
-import { formatDate } from "@/lib/utils";
-import { Plus, Search, Inbox, Pencil, Archive, ExternalLink, Star, Users, RotateCcw, Trash2, FileText } from "lucide-react";
+import {
+  formatDate, REPORT_TYPES, getReportFieldVisibility, getHighlightFields,
+  formatHighlightFields, getReportSections, INSTAGRAM_METRIC_FIELDS, REPORT_FIELD_LABELS,
+} from "@/lib/utils";
+import { Plus, Search, Inbox, Pencil, Archive, ExternalLink, Users, RotateCcw, Trash2, ChevronDown } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Account {
   platform: string; accountType: string; username: string; url: string;
 }
-interface Highlight {
-  id: string; platform: string; postLink: string | null; accountUsername: string | null;
-  likes: number; reposts: number; views: number; comments: number; bookmarks: number;
-  notes: string | null; submittedBy: string | null; createdAt: string;
+// Shape varies by platform — see lib/utils.ts HIGHLIGHT_FIELDS.
+type ReportHighlight = Record<string, string | undefined>;
+interface CreatorReport {
+  id: string; creatorId: string; creatorCode: string; creatorName: string;
+  accountUsername: string; department: string; reportType: string; status: string;
+  followerCount: number | null; followerChange: string | null; summary: string | null;
+  highlights: ReportHighlight[] | null; metrics: Record<string, unknown> | null;
+  trafficNotes: string | null; whatsWorking: string | null; whatsNotWorking: string | null;
+  needsTesting: string | null; actionItems: string | null; recommendedFocus: string | null;
+  additionalNotes: string | null; links: string[] | null; relayed: boolean;
+  reviewerNotes: string | null; submittedBy: string; submittedByName: string; submittedAt: string;
 }
 interface TeamNote {
   id: string; content: string; authorEmail: string; authorName: string;
@@ -25,7 +34,6 @@ interface Creator {
   needsMedia: boolean; needsReview: boolean; assignedPageRunners: string[];
   uploadsFolder: string | null; mediaFolder: string | null; signedPlatforms: string[]; overview: string | null;
   niche: any; assets: any; accounts: any; strategy: any;
-  highlights: Highlight[];
   createdAt: string; updatedAt: string;
 }
 
@@ -34,15 +42,18 @@ interface Creator {
 const STATUSES   = ["New","Active","Paused","Inactive","Dropped","Testing","Replacing Account"];
 const CREATOR_STATUSES = ["Active","Paused","Inactive","Dropped"];
 const PRIORITIES = ["High","Medium","Low"];
+const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
 const ACC_TYPES  = ["FBA Main","FBA Backup","FBA Funnel","Promo","Other"];
 const PLATFORMS  = ["X","Instagram","Reddit"];
 
-const METRIC_LABELS: Record<string, { likes: string; reposts: string | null; views: string | null; comments: string; bookmarks: string | null }> = {
-  X:         { likes: "Likes",   reposts: "Reposts",          views: "Views",       comments: "Comments", bookmarks: "Bookmarks" },
-  Instagram: { likes: "Likes",   reposts: "Followers Gained", views: "Views/Plays", comments: "Comments", bookmarks: "Saves" },
-  Reddit:    { likes: "Upvotes", reposts: "Shares",           views: null,          comments: "Comments", bookmarks: null },
+const REPORT_STATUS_STYLE: Record<string, string> = {
+  Draft:                  "text-slate-400 bg-slate-500/10",
+  Submitted:              "text-sky-400 bg-sky-500/10",
+  "Needs Revision":       "text-amber-400 bg-amber-500/10",
+  "Approved for Creator": "text-indigo-400 bg-indigo-500/10",
+  "Sent to Creator":      "text-emerald-400 bg-emerald-500/10",
+  Archived:               "text-slate-500 bg-slate-600/10",
 };
-const getMetrics = (platform: string) => METRIC_LABELS[platform] ?? METRIC_LABELS.X;
 
 const STATUS_STYLE: Record<string, string> = {
   Active:             "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
@@ -90,6 +101,18 @@ function emptyForm() {
   };
 }
 
+function emptyReportForm() {
+  return {
+    accountUsername: "", department: "", reportType: REPORT_TYPES[0],
+    followerCount: "", followerChange: "",
+    metrics: { reach: "", likes: "", comments: "", shares: "", saves: "", storyViews: "" } as Record<string, string>,
+    summary: "",
+    highlights: [] as ReportHighlight[],
+    trafficNotes: "", whatsWorking: "", whatsNotWorking: "",
+    needsTesting: "", actionItems: "", recommendedFocus: "", additionalNotes: "",
+  };
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function MyCreatorsPage() {
@@ -100,19 +123,26 @@ export default function MyCreatorsPage() {
   const [search,       setSearch]       = useState("");
   const [statusF,      setStatusF]      = useState("");
   const [priorityF,    setPriorityF]    = useState("");
+  const [sortBy,       setSortBy]       = useState<"code" | "priority" | "date">("code");
 
   // Modal state
   const [editModal,    setEditModal]    = useState(false);
   const [profileModal, setProfileModal] = useState(false);
   const [editId,       setEditId]       = useState<string | null>(null);
   const [form,         setForm]         = useState(emptyForm());
-  const [profileTab,   setProfileTab]   = useState<"overview"|"accounts"|"highlights"|"strategy"|"notes">("overview");
+  const [profileTab,   setProfileTab]   = useState<"overview"|"accounts"|"reports"|"strategy"|"notes">("overview");
   const [selected,     setSelected]     = useState<Creator | null>(null);
 
-  // Highlight form
-  const [highlights,    setHighlights]    = useState<Highlight[]>([]);
-  const [hlForm,        setHlForm]        = useState({ platform:"X", postLink:"", accountUsername:"", likes:"", reposts:"", views:"", comments:"", bookmarks:"", notes:"" });
-  const [addingHL,      setAddingHL]      = useState(false);
+  // Creator Reports
+  const [creatorReports,   setCreatorReports]   = useState<CreatorReport[]>([]);
+  const [addingReport,     setAddingReport]     = useState(false);
+  const [reportForm,       setReportForm]       = useState(emptyReportForm());
+  const [reportError,      setReportError]      = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [highlightModal,     setHighlightModal]     = useState(false);
+  const [highlightDraft,     setHighlightDraft]     = useState<ReportHighlight>({});
+  const [highlightEditIndex, setHighlightEditIndex] = useState<number | null>(null);
+  const [expandedReportId,   setExpandedReportId]   = useState<string | null>(null);
 
   // Team Notes
   const [teamNotes,     setTeamNotes]     = useState<TeamNote[]>([]);
@@ -135,9 +165,9 @@ export default function MyCreatorsPage() {
     }
   };
 
-  const loadHighlights = async (creatorId: string) => {
-    const res = await fetch(`/api/highlights?creatorId=${creatorId}`);
-    if (res.ok) setHighlights(await res.json());
+  const loadCreatorReports = async (creatorId: string) => {
+    const res = await fetch(`/api/creator-reports?creatorId=${creatorId}`);
+    if (res.ok) setCreatorReports(await res.json());
   };
 
   const loadTeamNotes = async (creatorId: string) => {
@@ -147,13 +177,17 @@ export default function MyCreatorsPage() {
 
   useEffect(() => { load(viewArchived); }, [viewArchived]);
 
-  // ── Filtered creators ─────────────────────────────────────────────────────────
+  // ── Filtered & sorted creators ────────────────────────────────────────────────
   const filtered = creators.filter(c => {
     const q = search.toLowerCase();
     if (q && !c.creatorName.toLowerCase().includes(q) && !c.creatorCode.toLowerCase().includes(q) && !c.assignedPageRunners.join(" ").toLowerCase().includes(q)) return false;
     if (statusF && c.status !== statusF) return false;
     if (priorityF && c.priority !== priorityF) return false;
     return true;
+  }).sort((a, b) => {
+    if (sortBy === "priority") return (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
+    if (sortBy === "date") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return a.creatorCode.localeCompare(b.creatorCode);
   });
 
   // ── Admin stats ───────────────────────────────────────────────────────────────
@@ -240,7 +274,9 @@ export default function MyCreatorsPage() {
 
   const openProfile = (c: Creator) => {
     setSelected(c); setProfileTab("overview"); setProfileModal(true);
-    loadHighlights(c.id);
+    setAddingReport(false); setReportForm(emptyReportForm()); setReportError("");
+    setExpandedReportId(null);
+    loadCreatorReports(c.id);
     loadTeamNotes(c.id);
   };
 
@@ -266,17 +302,58 @@ export default function MyCreatorsPage() {
     loadTeamNotes(selected.id);
   };
 
-  const addHighlight = async () => {
-    if (!selected) return;
-    await fetch("/api/highlights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creatorId: selected.id, ...hlForm }) });
-    setHlForm({ platform:"X", postLink:"", accountUsername:"", likes:"", reposts:"", views:"", comments:"", bookmarks:"", notes:"" });
-    setAddingHL(false);
-    loadHighlights(selected.id);
+  const openAddHighlight = () => { setHighlightDraft({}); setHighlightEditIndex(null); setHighlightModal(true); };
+  const openEditHighlight = (i: number) => { setHighlightDraft(reportForm.highlights[i]); setHighlightEditIndex(i); setHighlightModal(true); };
+  const saveHighlight = () => {
+    setReportForm(f => {
+      const hs = [...f.highlights];
+      if (highlightEditIndex !== null) hs[highlightEditIndex] = highlightDraft;
+      else hs.push(highlightDraft);
+      return { ...f, highlights: hs };
+    });
+    setHighlightModal(false);
   };
+  const removeReportHighlight = (i: number) => setReportForm(f => ({ ...f, highlights: f.highlights.filter((_, j) => j !== i) }));
 
-  const deleteHighlight = async (id: string) => {
-    await fetch("/api/highlights", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    if (selected) loadHighlights(selected.id);
+  const submitReport = async (status: "Draft" | "Submitted") => {
+    if (!selected) return;
+    setReportError("");
+    if (!reportForm.accountUsername || !reportForm.department || !reportForm.reportType) {
+      setReportError("Account and report type are required.");
+      return;
+    }
+    setReportSubmitting(true);
+    const visibility = getReportFieldVisibility(reportForm.department, reportForm.reportType);
+    const metricsEntries = Object.entries(reportForm.metrics).filter(([, v]) => v !== "");
+    const body = {
+      creatorId: selected.id,
+      accountUsername: reportForm.accountUsername,
+      department: reportForm.department,
+      reportType: reportForm.reportType,
+      followerCount: visibility.followerCount && reportForm.followerCount !== "" ? reportForm.followerCount : null,
+      followerChange: visibility.followerChange ? (reportForm.followerChange || null) : null,
+      metrics: visibility.metrics && metricsEntries.length > 0 ? Object.fromEntries(metricsEntries) : null,
+      summary: visibility.summary ? (reportForm.summary || null) : null,
+      highlights: reportForm.highlights.filter(h => Object.values(h).some(v => (v ?? "").toString().trim() !== "")),
+      trafficNotes: visibility.trafficNotes ? (reportForm.trafficNotes || null) : null,
+      whatsWorking: visibility.whatsWorking ? (reportForm.whatsWorking || null) : null,
+      whatsNotWorking: visibility.whatsNotWorking ? (reportForm.whatsNotWorking || null) : null,
+      needsTesting: visibility.needsTesting ? (reportForm.needsTesting || null) : null,
+      actionItems: visibility.actionItems ? (reportForm.actionItems || null) : null,
+      recommendedFocus: visibility.recommendedFocus ? (reportForm.recommendedFocus || null) : null,
+      additionalNotes: visibility.additionalNotes ? (reportForm.additionalNotes || null) : null,
+      status,
+    };
+    const res = await fetch("/api/creator-reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) {
+      setReportForm(emptyReportForm());
+      setAddingReport(false);
+      loadCreatorReports(selected.id);
+    } else {
+      const d = await res.json();
+      setReportError(d.error ?? "Failed to save report.");
+    }
+    setReportSubmitting(false);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -295,9 +372,6 @@ export default function MyCreatorsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Link href="/my-creators/reports" className="flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:text-indigo-300 hover:border-indigo-400 transition">
-              <FileText size={15} /> Creator Reports
-            </Link>
             {isAdmin && (
               <>
                 <button
@@ -349,6 +423,11 @@ export default function MyCreatorsPage() {
             <option value="">All Priorities</option>
             {PRIORITIES.map(p => <option key={p}>{p}</option>)}
           </select>
+          <select className="db-filter" value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}>
+            <option value="code">Sort: Creator Code</option>
+            <option value="priority">Sort: Priority</option>
+            <option value="date">Sort: Date Added</option>
+          </select>
         </div>
       </div>
 
@@ -361,7 +440,6 @@ export default function MyCreatorsPage() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(c => {
-            const lastHL = c.highlights?.[0];
             const accs   = Array.isArray(c.accounts) ? c.accounts : [];
             return (
               <div key={c.id} onClick={() => openProfile(c)} className="card rounded-xl p-5 cursor-pointer hover:border-indigo-400/50 transition">
@@ -399,7 +477,6 @@ export default function MyCreatorsPage() {
                   {c.assignedPageRunners?.length > 0 && (
                     <p className="flex items-center gap-1.5"><Users size={11} />{c.assignedPageRunners.slice(0,2).join(", ")}{c.assignedPageRunners.length > 2 ? ` +${c.assignedPageRunners.length - 2}` : ""}</p>
                   )}
-                  {lastHL && <p className="flex items-center gap-1.5"><Star size={11} /> Last highlight: {formatDate(lastHL.createdAt)}</p>}
                   {accs.length > 0 && <p className="flex items-center gap-1.5"><span>📱</span> {accs.length} account{accs.length !== 1 ? "s" : ""}</p>}
                 </div>
               </div>
@@ -436,7 +513,7 @@ export default function MyCreatorsPage() {
 
           {/* Tab bar */}
           <div className="flex gap-0.5 bg-slate-800/60 rounded-xl p-1 mb-5">
-            {(["overview","accounts","highlights","strategy","notes"] as const).map(t => (
+            {(["overview","accounts","reports","strategy","notes"] as const).map(t => (
               <button key={t} onClick={() => setProfileTab(t)} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition capitalize ${profileTab === t ? "bg-slate-700 text-slate-200" : "text-slate-500 hover:text-slate-300"}`}>{t}</button>
             ))}
           </div>
@@ -487,81 +564,208 @@ export default function MyCreatorsPage() {
             </div>
           )}
 
-          {/* Highlights */}
-          {profileTab === "highlights" && (
+          {/* Reports */}
+          {profileTab === "reports" && (
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-xs uppercase tracking-widest text-amber-400 font-semibold">Top Posts</h4>
-                <button onClick={() => setAddingHL(v => !v)} className="text-xs text-indigo-400 hover:text-indigo-300 transition">+ Log Highlight</button>
+              <div className="card rounded-xl p-4 mb-4 text-sm text-slate-400 space-y-2">
+                <p className="text-xs uppercase tracking-widest text-amber-400 font-semibold mb-1">Weekly Reporting Rules</p>
+                <p>Submit an update for each creator/account once a week, <span className="text-slate-300">Monday through Wednesday</span>.</p>
+                <p>If there&apos;s nothing significant, still submit a report saying there are no significant updates for the week.</p>
+                <p>Report immediately (don&apos;t wait for the weekly window) for: new accounts, important account details, anything performing above average, account growth, or major highlights.</p>
+                <p>If an account is being tested and the creator shouldn&apos;t know yet, submit it as an <span className="text-slate-300">Internal Report</span> instead of a Creator Report.</p>
               </div>
-              {addingHL && (() => {
-                const m = getMetrics(hlForm.platform);
+
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-xs uppercase tracking-widest text-amber-400 font-semibold">Reports</h4>
+                <button onClick={() => setAddingReport(v => !v)} className="text-xs text-indigo-400 hover:text-indigo-300 transition">+ New Report</button>
+              </div>
+
+              {addingReport && (() => {
                 const creatorAccounts: Account[] = Array.isArray(selected?.accounts) ? selected.accounts as Account[] : [];
+                const platform = reportForm.department;
+                const visibility = getReportFieldVisibility(platform, reportForm.reportType);
                 return (
                   <div className="card rounded-xl p-4 mb-4 space-y-3 border border-indigo-500/20">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="sf-label text-xs">Platform</label>
-                        <select className="sf-input" value={hlForm.platform} onChange={e => setHlForm(f => ({ ...f, platform: e.target.value, reposts: "", views: "", bookmarks: "" }))}>
-                          {PLATFORMS.map(p => <option key={p}>{p}</option>)}
+                        <label className="sf-label text-xs">Account *</label>
+                        <select className="sf-input" value={reportForm.accountUsername} onChange={e => {
+                          const acc = creatorAccounts.find(a => a.username === e.target.value);
+                          setReportForm(f => ({ ...f, accountUsername: e.target.value, department: acc?.platform ?? f.department }));
+                        }}>
+                          <option value="">Select account…</option>
+                          {creatorAccounts.map((a, i) => <option key={i} value={a.username}>@{a.username} ({a.platform})</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="sf-label text-xs">Account @</label>
-                        {creatorAccounts.length > 0 ? (
-                          <select className="sf-input" value={hlForm.accountUsername} onChange={e => {
-                            const acc = creatorAccounts.find(a => a.username === e.target.value);
-                            setHlForm(f => ({ ...f, accountUsername: e.target.value, platform: acc?.platform ?? f.platform }));
-                          }}>
-                            <option value="">Select or type…</option>
-                            {creatorAccounts.map((a, i) => <option key={i} value={a.username}>@{a.username} ({a.platform})</option>)}
-                          </select>
-                        ) : (
-                          <input className="sf-input" value={hlForm.accountUsername} onChange={e => setHlForm(f => ({...f, accountUsername: e.target.value}))} placeholder="@handle" />
+                        <label className="sf-label text-xs">Report Type *</label>
+                        <select className="sf-input" value={reportForm.reportType} onChange={e => setReportForm(f => ({ ...f, reportType: e.target.value }))}>
+                          {REPORT_TYPES.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {(visibility.followerCount || visibility.followerChange) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {visibility.followerCount && (
+                          <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.followerCount}</label><input type="number" className="sf-input" value={reportForm.followerCount} onChange={e => setReportForm(f => ({ ...f, followerCount: e.target.value }))} /></div>
+                        )}
+                        {visibility.followerChange && (
+                          <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.followerChange}</label><input className="sf-input" value={reportForm.followerChange} onChange={e => setReportForm(f => ({ ...f, followerChange: e.target.value }))} placeholder="e.g. +1.2K this week" /></div>
                         )}
                       </div>
-                      <div className="col-span-2"><label className="sf-label text-xs">Post URL</label><input className="sf-input" value={hlForm.postLink} onChange={e => setHlForm(f => ({...f, postLink: e.target.value}))} placeholder="https://…" /></div>
-                      <div><label className="sf-label text-xs">{m.likes}</label><input className="sf-input" type="number" value={hlForm.likes} onChange={e => setHlForm(f => ({...f, likes: e.target.value}))} /></div>
-                      {m.reposts   && <div><label className="sf-label text-xs">{m.reposts}</label><input className="sf-input" type="number" value={hlForm.reposts} onChange={e => setHlForm(f => ({...f, reposts: e.target.value}))} /></div>}
-                      {m.views     && <div><label className="sf-label text-xs">{m.views}</label><input className="sf-input" type="number" value={hlForm.views} onChange={e => setHlForm(f => ({...f, views: e.target.value}))} /></div>}
-                      <div><label className="sf-label text-xs">{m.comments}</label><input className="sf-input" type="number" value={hlForm.comments} onChange={e => setHlForm(f => ({...f, comments: e.target.value}))} /></div>
-                      {m.bookmarks && <div><label className="sf-label text-xs">{m.bookmarks}</label><input className="sf-input" type="number" value={hlForm.bookmarks} onChange={e => setHlForm(f => ({...f, bookmarks: e.target.value}))} /></div>}
-                      <div className="col-span-2"><label className="sf-label text-xs">Notes</label><input className="sf-input" value={hlForm.notes} onChange={e => setHlForm(f => ({...f, notes: e.target.value}))} placeholder="Why did it perform well?" /></div>
-                    </div>
+                    )}
+
+                    {visibility.metrics && (
+                      <div>
+                        <label className="sf-label text-xs">Engagement Metrics</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {INSTAGRAM_METRIC_FIELDS.map(f => (
+                            <div key={f.key}>
+                              <label className="sf-label text-xs">{f.label}</label>
+                              <input type="number" className="sf-input" value={reportForm.metrics[f.key] ?? ""} onChange={e => setReportForm(rf => ({ ...rf, metrics: { ...rf.metrics, [f.key]: e.target.value } }))} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {visibility.summary && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.summary}</label><textarea className="sf-input" value={reportForm.summary} onChange={e => setReportForm(f => ({ ...f, summary: e.target.value }))} /></div>
+                    )}
+
+                    {visibility.highlights && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="sf-label !mb-0">{REPORT_FIELD_LABELS.highlights}</label>
+                          <button type="button" onClick={openAddHighlight} className="text-xs text-indigo-400 hover:text-indigo-300 transition">+ Add Highlight</button>
+                        </div>
+                        {reportForm.highlights.length === 0 ? (
+                          <p className="text-xs text-slate-500">No highlights added.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {reportForm.highlights.map((h, i) => {
+                              const fields = formatHighlightFields(h, platform);
+                              return (
+                                <div key={i} className="card rounded-lg p-3 flex items-start justify-between gap-2">
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
+                                    {fields.length === 0 ? <span className="text-slate-500">(no details yet)</span> : fields.map((f, j) => (
+                                      <span key={j}><span className="text-slate-500">{f.label}:</span> {f.value}</span>
+                                    ))}
+                                  </div>
+                                  <div className="flex gap-1 shrink-0">
+                                    <button type="button" onClick={() => openEditHighlight(i)} className="text-indigo-400/70 hover:text-indigo-400 transition px-1"><Pencil size={13} /></button>
+                                    <button type="button" onClick={() => removeReportHighlight(i)} className="text-rose-400/60 hover:text-rose-400 transition px-1"><Trash2 size={13} /></button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {visibility.trafficNotes && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.trafficNotes}</label><textarea className="sf-input" value={reportForm.trafficNotes} onChange={e => setReportForm(f => ({ ...f, trafficNotes: e.target.value }))} /></div>
+                    )}
+                    {visibility.whatsWorking && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.whatsWorking}</label><textarea className="sf-input" value={reportForm.whatsWorking} onChange={e => setReportForm(f => ({ ...f, whatsWorking: e.target.value }))} /></div>
+                    )}
+                    {visibility.whatsNotWorking && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.whatsNotWorking}</label><textarea className="sf-input" value={reportForm.whatsNotWorking} onChange={e => setReportForm(f => ({ ...f, whatsNotWorking: e.target.value }))} /></div>
+                    )}
+                    {visibility.needsTesting && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.needsTesting}</label><textarea className="sf-input" value={reportForm.needsTesting} onChange={e => setReportForm(f => ({ ...f, needsTesting: e.target.value }))} /></div>
+                    )}
+                    {visibility.actionItems && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.actionItems}</label><textarea className="sf-input" value={reportForm.actionItems} onChange={e => setReportForm(f => ({ ...f, actionItems: e.target.value }))} /></div>
+                    )}
+                    {visibility.recommendedFocus && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.recommendedFocus}</label><textarea className="sf-input" value={reportForm.recommendedFocus} onChange={e => setReportForm(f => ({ ...f, recommendedFocus: e.target.value }))} /></div>
+                    )}
+                    {visibility.additionalNotes && (
+                      <div><label className="sf-label text-xs">{REPORT_FIELD_LABELS.additionalNotes}</label><textarea className="sf-input" value={reportForm.additionalNotes} onChange={e => setReportForm(f => ({ ...f, additionalNotes: e.target.value }))} /></div>
+                    )}
+
+                    {reportError && <p className="text-sm text-rose-400">{reportError}</p>}
+
                     <div className="flex gap-2">
-                      <button onClick={addHighlight} className="bg-amber-600 hover:bg-amber-500 transition text-white text-xs font-semibold px-4 py-2 rounded-lg">Save Highlight</button>
-                      <button onClick={() => setAddingHL(false)} className="px-4 py-2 rounded-lg border border-slate-600 text-slate-400 text-xs">Cancel</button>
+                      <button onClick={() => submitReport("Submitted")} disabled={reportSubmitting} className="bg-indigo-600 hover:bg-indigo-500 transition text-white text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
+                        {reportSubmitting ? "Saving…" : "Submit Report"}
+                      </button>
+                      <button onClick={() => submitReport("Draft")} disabled={reportSubmitting} className="px-4 py-2 rounded-lg border border-slate-600 text-slate-400 text-xs hover:border-indigo-400 transition">Save Draft</button>
+                      <button onClick={() => { setAddingReport(false); setReportForm(emptyReportForm()); setReportError(""); }} className="px-4 py-2 rounded-lg border border-slate-600 text-slate-400 text-xs">Cancel</button>
                     </div>
+
+                    {/* + Add Highlight modal — fields depend on the selected account's platform */}
+                    <Modal open={highlightModal} onClose={() => setHighlightModal(false)} title={highlightEditIndex !== null ? "Edit Highlight" : "Add Highlight"} maxWidth="max-w-md"
+                      footer={<>
+                        <button onClick={saveHighlight} className="flex-1 bg-indigo-600 hover:bg-indigo-500 transition text-white font-semibold py-2.5 rounded-xl text-sm">Save</button>
+                        <button onClick={() => setHighlightModal(false)} className="px-5 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm">Cancel</button>
+                      </>}>
+                      <div className="space-y-3">
+                        {getHighlightFields(platform).map(f => (
+                          <div key={f.key}>
+                            <label className="sf-label text-xs">{f.label}</label>
+                            <input
+                              type={f.type === "number" ? "number" : "text"}
+                              className="sf-input"
+                              value={highlightDraft[f.key] ?? ""}
+                              onChange={e => setHighlightDraft(d => ({ ...d, [f.key]: e.target.value }))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </Modal>
                   </div>
                 );
               })()}
-              {highlights.length === 0 ? <p className="text-sm text-slate-500">No highlights logged yet.</p> : (
-                <div className="space-y-3">
-                  {highlights.map(h => {
-                    const m = getMetrics(h.platform ?? "X");
+
+              {creatorReports.length === 0 ? <p className="text-sm text-slate-500">No reports submitted yet.</p> : (
+                <div className="space-y-2">
+                  {creatorReports.map(r => {
+                    const expanded = expandedReportId === r.id;
+                    const sections = getReportSections(r);
                     return (
-                      <div key={h.id} className="rounded-xl border border-slate-700/40 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              {h.accountUsername && <p className="text-xs text-slate-400">@{h.accountUsername}</p>}
-                              <span className="text-xs text-slate-600">{h.platform ?? "X"}</span>
+                      <div key={r.id} className="rounded-xl border border-slate-700/40 overflow-hidden">
+                        <div
+                          onClick={() => setExpandedReportId(expanded ? null : r.id)}
+                          className="flex items-center justify-between gap-3 flex-wrap p-4 cursor-pointer hover:bg-slate-800/30 transition"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className="text-xs text-slate-400">@{r.accountUsername}</span>
+                              <span className="text-xs text-indigo-300">{r.department}</span>
+                              <span className="text-xs text-slate-500">{r.reportType}</span>
                             </div>
-                            {h.postLink && <a href={h.postLink} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 text-xs truncate block transition">{h.postLink}</a>}
-                            <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-400">
-                              <span>{m.likes}: {h.likes.toLocaleString()}</span>
-                              {m.reposts   && <span>{m.reposts}: {h.reposts.toLocaleString()}</span>}
-                              {m.views     && <span>{m.views}: {h.views.toLocaleString()}</span>}
-                              <span>{m.comments}: {h.comments.toLocaleString()}</span>
-                              {m.bookmarks && h.bookmarks > 0 && <span>{m.bookmarks}: {h.bookmarks.toLocaleString()}</span>}
-                            </div>
-                            {h.notes && <p className="text-xs text-slate-500 mt-1">{h.notes}</p>}
+                            <p className="text-xs text-slate-500">Submitted {formatDate(r.submittedAt)}</p>
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-xs text-slate-500">{formatDate(h.createdAt)}</p>
-                            <button onClick={() => deleteHighlight(h.id)} className="text-xs text-rose-400/60 hover:text-rose-400 transition mt-1">remove</button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${REPORT_STATUS_STYLE[r.status] ?? "text-slate-400 bg-slate-600/20"}`}>{r.status}</span>
+                            <ChevronDown size={15} className={`text-slate-500 transition-transform ${expanded ? "rotate-180" : ""}`} />
                           </div>
                         </div>
+                        {expanded && (
+                          <div className="px-4 pb-4 pt-3 border-t border-slate-700/40 space-y-1.5">
+                            {sections.map((sec, i) => (
+                              sec.items.length === 1 && sec.items[0].label === "" ? (
+                                <p key={i} className="text-xs text-slate-400 whitespace-pre-wrap"><span className="text-slate-500 font-semibold">{sec.title}:</span> {sec.items[0].value}</p>
+                              ) : (
+                                <div key={i}>
+                                  <p className="text-xs font-semibold text-slate-400">{sec.title}</p>
+                                  <div className="space-y-0.5">
+                                    {sec.items.map((it, j) => (
+                                      <p key={j} className="text-xs text-slate-400 whitespace-pre-wrap">{it.label ? <span className="text-slate-500">{it.label}: </span> : null}{it.value}</p>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            ))}
+                            {r.status === "Needs Revision" && r.reviewerNotes && (
+                              <p className="text-xs text-amber-300 mt-2">Reviewer notes: {r.reviewerNotes}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

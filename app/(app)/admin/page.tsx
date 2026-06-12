@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
-import { BarChart2, PlusCircle, Database, MessageSquare, CalendarCheck, DollarSign, Users, AlertTriangle, BookOpen } from "lucide-react";
+import { BarChart2, PlusCircle, Database, MessageSquare, CalendarCheck, DollarSign, Users, AlertTriangle, BookOpen, ListTodo, FileText, Library } from "lucide-react";
 
 export default async function AdminHomePage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -52,6 +52,21 @@ export default async function AdminHomePage() {
           <p className="font-semibold text-slate-100 text-sm mb-1">Employee Database</p>
           <p className="text-xs text-slate-400">Add, edit, and manage employee profiles and access.</p>
         </Link>
+      </div>
+
+      <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-3">Operations</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {[
+          { href: "/admin/tasks",          icon: <ListTodo size={22} className="text-sky-400 mb-2.5" />,  label: "Team Productivity", desc: "Review daily tasks and time spent per employee." },
+          { href: "/admin/creator-reports", icon: <FileText size={22} className="text-teal-400 mb-2.5" />, label: "Creator Reports",   desc: "Review weekly creator/account reports." },
+          { href: "/admin/internal-docs",   icon: <Library size={22} className="text-violet-400 mb-2.5" />, label: "Internal Documentation", desc: "App architecture, workflows, and dev notes." },
+        ].map((c) => (
+          <Link key={c.href} href={c.href} className="bento-card text-left block">
+            {c.icon}
+            <p className="font-semibold text-slate-100 text-sm mb-1">{c.label}</p>
+            <p className="text-xs text-slate-400">{c.desc}</p>
+          </Link>
+        ))}
       </div>
 
       <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-3">Learning Management</p>

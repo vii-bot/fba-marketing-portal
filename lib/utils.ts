@@ -248,6 +248,199 @@ export function todayLocalDate(): string {
 export const REPORT_TYPES = ["Internal Report", "Creator Report"];
 export const REPORT_STATUSES = ["Draft", "Submitted", "Needs Revision", "Approved for Creator", "Sent to Creator", "Archived"];
 
+// Which optional CreatorReport fields apply to a given account platform +
+// report type. Drives the new-report form, report displays, and the .txt
+// export so each report only shows/exports what's relevant.
+export interface ReportFieldVisibility {
+  followerCount: boolean;
+  followerChange: boolean;
+  metrics: boolean;
+  summary: boolean;
+  highlights: boolean;
+  trafficNotes: boolean;
+  whatsWorking: boolean;
+  whatsNotWorking: boolean;
+  needsTesting: boolean;
+  actionItems: boolean;
+  recommendedFocus: boolean;
+  additionalNotes: boolean;
+  relayed: boolean;
+}
+
+export function getReportFieldVisibility(platform: string, reportType: string): ReportFieldVisibility {
+  const isCreatorReport = reportType === "Creator Report";
+  const isInstagram = platform === "Instagram";
+  return {
+    // Follower count isn't the main performance signal on X/Reddit — only
+    // surface it (and the Instagram engagement metrics block) for Instagram.
+    followerCount: isInstagram,
+    followerChange: isInstagram,
+    metrics: isInstagram,
+    summary: true,
+    highlights: true,
+    trafficNotes: !isCreatorReport,
+    whatsWorking: true,
+    whatsNotWorking: !isCreatorReport,
+    needsTesting: !isCreatorReport,
+    actionItems: !isCreatorReport,
+    recommendedFocus: isCreatorReport,
+    additionalNotes: !isCreatorReport,
+    relayed: true,
+  };
+}
+
+// Human-readable labels for report fields — used to build clean, grouped
+// .txt exports and displays instead of raw database field names.
+export const REPORT_FIELD_LABELS: Record<string, string> = {
+  followerCount: "Current Follower Count",
+  followerChange: "Gain / Loss",
+  reach: "Reach",
+  likes: "Likes",
+  comments: "Comments",
+  shares: "Shares",
+  saves: "Saves",
+  storyViews: "Story Views",
+  summary: "Performance Summary",
+  highlights: "Top Highlights",
+  trafficNotes: "Traffic / Conversion Notes",
+  whatsWorking: "What's Working",
+  whatsNotWorking: "What's Not Working",
+  needsTesting: "What Needs Testing",
+  actionItems: "Action Items",
+  recommendedFocus: "Recommended Focus",
+  additionalNotes: "Additional Notes",
+  relayed: "Relayed to Creator",
+};
+
+// Instagram-only engagement metrics, stored together as CreatorReport.metrics.
+export const INSTAGRAM_METRIC_FIELDS: { key: string; label: string }[] = [
+  { key: "reach", label: "Reach" },
+  { key: "likes", label: "Likes" },
+  { key: "comments", label: "Comments" },
+  { key: "shares", label: "Shares" },
+  { key: "saves", label: "Saves" },
+  { key: "storyViews", label: "Story Views" },
+];
+
+// Per-platform fields collected in the "+ Add Highlight" modal — the shape
+// of each entry in CreatorReport.highlights varies by the account's platform.
+export interface HighlightField { key: string; label: string; type?: "number" }
+
+export const HIGHLIGHT_FIELDS: Record<string, HighlightField[]> = {
+  X: [
+    { key: "link", label: "Post Link" },
+    { key: "likes", label: "Likes", type: "number" },
+    { key: "views", label: "Views", type: "number" },
+    { key: "comments", label: "Replies / Comments", type: "number" },
+    { key: "estClicks", label: "Estimated Subs or Clicks" },
+    { key: "notes", label: "Notes" },
+  ],
+  Reddit: [
+    { key: "link", label: "Post Link" },
+    { key: "subreddit", label: "Subreddit" },
+    { key: "upvotes", label: "Upvotes", type: "number" },
+    { key: "comments", label: "Comments", type: "number" },
+    { key: "estClicks", label: "Estimated Subs or Clicks" },
+    { key: "notes", label: "Notes" },
+  ],
+  Instagram: [
+    { key: "link", label: "Post Link" },
+    { key: "reach", label: "Reach", type: "number" },
+    { key: "likes", label: "Likes", type: "number" },
+    { key: "comments", label: "Comments", type: "number" },
+    { key: "shares", label: "Shares", type: "number" },
+    { key: "saves", label: "Saves", type: "number" },
+    { key: "notes", label: "Notes" },
+  ],
+};
+
+// Resolves the highlight field set for a platform, falling back to X's
+// shape for unrecognized/legacy platforms.
+export function getHighlightFields(platform: string): HighlightField[] {
+  return HIGHLIGHT_FIELDS[platform] ?? HIGHLIGHT_FIELDS.X;
+}
+
+// Extracts the non-blank fields of a single highlight entry as
+// {label, value} pairs, for display/export. Handles legacy entries that
+// used the old {performance, link, notes} shape.
+export function formatHighlightFields(h: Record<string, any>, platform: string): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  if (h.performance) out.push({ label: "Performance", value: String(h.performance) });
+  for (const f of getHighlightFields(platform)) {
+    const v = h[f.key];
+    if (v !== undefined && v !== null && String(v).trim() !== "") {
+      out.push({ label: f.label, value: String(v) });
+    }
+  }
+  return out;
+}
+
+export interface ReportSectionItem { label: string; value: string }
+export interface ReportSection { title: string; items: ReportSectionItem[] }
+
+// Builds a clean, grouped representation of a report's body for display and
+// .txt export — only includes fields that are visible for the report's
+// platform (department) + report type AND have a non-blank value.
+export function getReportSections(r: {
+  department: string;
+  reportType: string;
+  followerCount: number | null;
+  followerChange: string | null;
+  metrics: Record<string, unknown> | null;
+  summary: string | null;
+  highlights: Record<string, unknown>[] | null;
+  trafficNotes: string | null;
+  whatsWorking: string | null;
+  whatsNotWorking: string | null;
+  needsTesting: string | null;
+  actionItems: string | null;
+  recommendedFocus: string | null;
+  additionalNotes: string | null;
+  relayed: boolean;
+}): ReportSection[] {
+  const v = getReportFieldVisibility(r.department, r.reportType);
+  const sections: ReportSection[] = [];
+
+  const metricItems: ReportSectionItem[] = [];
+  if (v.followerCount && r.followerCount !== null && r.followerCount !== undefined) {
+    metricItems.push({ label: REPORT_FIELD_LABELS.followerCount, value: r.followerCount.toLocaleString() });
+  }
+  if (v.followerChange && r.followerChange) {
+    metricItems.push({ label: REPORT_FIELD_LABELS.followerChange, value: r.followerChange });
+  }
+  if (v.metrics && r.metrics) {
+    for (const f of INSTAGRAM_METRIC_FIELDS) {
+      const val = (r.metrics as any)[f.key];
+      if (val !== undefined && val !== null && String(val).trim() !== "") {
+        metricItems.push({ label: f.label, value: String(val) });
+      }
+    }
+  }
+  if (metricItems.length > 0) sections.push({ title: "Performance Metrics", items: metricItems });
+
+  if (v.summary && r.summary) {
+    sections.push({ title: REPORT_FIELD_LABELS.summary, items: [{ label: "", value: r.summary }] });
+  }
+
+  if (v.highlights && (r.highlights ?? []).length > 0) {
+    const items = (r.highlights ?? [])
+      .map((h, i) => ({ label: `#${i + 1}`, value: formatHighlightFields(h, r.department).map(f => `${f.label}: ${f.value}`).join(" · ") }))
+      .filter(it => it.value);
+    if (items.length > 0) sections.push({ title: REPORT_FIELD_LABELS.highlights, items });
+  }
+
+  const noteFields = ["trafficNotes", "whatsWorking", "whatsNotWorking", "needsTesting", "actionItems", "recommendedFocus", "additionalNotes"] as const;
+  for (const key of noteFields) {
+    if (v[key] && r[key]) {
+      sections.push({ title: REPORT_FIELD_LABELS[key], items: [{ label: "", value: r[key] as string }] });
+    }
+  }
+
+  sections.push({ title: REPORT_FIELD_LABELS.relayed, items: [{ label: "", value: r.relayed ? "Yes" : "No" }] });
+
+  return sections;
+}
+
 // Page Runners report weekly, Monday through Wednesday. Returns the
 // Monday-Sunday range (as Date objects, local time) containing `date`, used
 // to determine "reports due this week" / "missing weekly reports".

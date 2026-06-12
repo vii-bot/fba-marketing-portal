@@ -68,8 +68,8 @@ export default function AdminTaskboardPage() {
   return (
     <div className="w-full max-w-6xl mx-auto">
       <div className="module-header rounded-2xl p-8 mb-6">
-        <p className="text-xs uppercase tracking-wider text-indigo-400 mb-2">Taskboard</p>
-        <h2 className="font-bold text-slate-100 mb-1" style={{ fontSize: 23 }}>Taskboard Admin</h2>
+        <p className="text-xs uppercase tracking-wider text-indigo-400 mb-2">Team Productivity</p>
+        <h2 className="font-bold text-slate-100 mb-1" style={{ fontSize: 23 }}>Team Productivity Admin</h2>
         <p className="text-sm text-slate-400 opacity-70">Review employee tasks and time spent for a given day.</p>
       </div>
 

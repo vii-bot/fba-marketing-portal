@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
 import { canManageContractors, canManageCreatorReports, canAccessInternalDocs } from "@/lib/permissions";
 import Link from "next/link";
-import { LayoutDashboard, BookOpen, AlertTriangle, Clock, ShieldCheck, Users, CalendarCheck, BarChart2, GraduationCap, Inbox, FileText, Briefcase, ListTodo, Library } from "lucide-react";
+import { LayoutDashboard, BookOpen, AlertTriangle, Clock, ShieldCheck, CalendarCheck, BarChart2, GraduationCap, Briefcase, ListTodo, Library } from "lucide-react";
 import DashboardSearch from "@/components/ui/DashboardSearch";
 
 export default async function DashboardPage() {
@@ -107,35 +107,10 @@ export default async function DashboardPage() {
             <p className="font-semibold text-indigo-300 text-sm mb-1">OT Requests</p>
             <p className="text-xs text-slate-400">Payroll summary and OT overview</p>
           </Link>
-          <Link href="/admin/employees" className="card rounded-xl p-5 hover:border-emerald-400 transition block">
-            <Users size={20} className="text-emerald-400 mb-2" />
-            <p className="font-semibold text-emerald-300 text-sm mb-1">Employee DB</p>
-            <p className="text-xs text-slate-400">Manage team and schedules</p>
-          </Link>
-          <Link href="/admin/requests" className="card rounded-xl p-5 hover:border-purple-400 transition block">
-            <Inbox size={20} className="text-purple-400 mb-2" />
-            <p className="font-semibold text-purple-300 text-sm mb-1">Employee Requests</p>
-            <p className="text-xs text-slate-400">Review COE and other employee requests</p>
-          </Link>
           <Link href="/admin/contractor-requests" className="card rounded-xl p-5 hover:border-amber-400 transition block">
             <Briefcase size={20} className="text-amber-400 mb-2" />
             <p className="font-semibold text-amber-300 text-sm mb-1">Contractor Requests</p>
             <p className="text-xs text-slate-400">Review terminations, transfers, and hires</p>
-          </Link>
-          <Link href="/admin/tasks" className="card rounded-xl p-5 hover:border-sky-400 transition block">
-            <ListTodo size={20} className="text-sky-400 mb-2" />
-            <p className="font-semibold text-sky-300 text-sm mb-1">Taskboard</p>
-            <p className="text-xs text-slate-400">Review daily tasks and time spent per employee</p>
-          </Link>
-          <Link href="/admin/creator-reports" className="card rounded-xl p-5 hover:border-teal-400 transition block">
-            <FileText size={20} className="text-teal-400 mb-2" />
-            <p className="font-semibold text-teal-300 text-sm mb-1">Creator Reports</p>
-            <p className="text-xs text-slate-400">Review weekly creator/account reports</p>
-          </Link>
-          <Link href="/admin/internal-docs" className="card rounded-xl p-5 hover:border-violet-400 transition block">
-            <Library size={20} className="text-violet-400 mb-2" />
-            <p className="font-semibold text-violet-300 text-sm mb-1">Internal Documentation</p>
-            <p className="text-xs text-slate-400">App architecture, workflows, and dev notes</p>
           </Link>
         </div>
       ) : (
@@ -155,20 +130,10 @@ export default async function DashboardPage() {
             <p className="font-semibold text-emerald-300 text-sm mb-1">Submit a Request</p>
             <p className="text-xs text-slate-400">OT, Weekend OT, and leave requests</p>
           </Link>
-          <Link href="/requests" className="card rounded-xl p-5 hover:border-purple-400 transition block">
-            <FileText size={20} className="text-purple-400 mb-2" />
-            <p className="font-semibold text-purple-300 text-sm mb-1">My Requests</p>
-            <p className="text-xs text-slate-400">COE and other employee requests</p>
-          </Link>
           <Link href="/tasks" className="card rounded-xl p-5 hover:border-sky-400 transition block">
             <ListTodo size={20} className="text-sky-400 mb-2" />
             <p className="font-semibold text-sky-300 text-sm mb-1">My Taskboard</p>
             <p className="text-xs text-slate-400">Log tasks and track time spent</p>
-          </Link>
-          <Link href="/my-creators/reports" className="card rounded-xl p-5 hover:border-teal-400 transition block">
-            <FileText size={20} className="text-teal-400 mb-2" />
-            <p className="font-semibold text-teal-300 text-sm mb-1">Creator Reports</p>
-            <p className="text-xs text-slate-400">Submit weekly account reports</p>
           </Link>
           {canAccessContractorRequests && (
             <Link href="/admin/contractor-requests" className="card rounded-xl p-5 hover:border-amber-400 transition block">

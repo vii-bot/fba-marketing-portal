@@ -98,6 +98,22 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* DEV ONLY — remove this block + app/api/dev-login/route.ts when done */}
+        {process.env.NODE_ENV !== "production" && (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={async () => {
+              setLoading(true);
+              await fetch("/api/dev-login", { method: "POST" });
+              window.location.href = "/dashboard";
+            }}
+            className="w-full mt-3 rounded-xl border border-dashed border-amber-500/40 px-4 py-2.5 text-xs font-semibold text-amber-300 hover:border-amber-400 transition disabled:opacity-60"
+          >
+            Dev Login (skip auth — admin)
+          </button>
+        )}
+
         <p className="text-xs text-slate-600 mt-6 text-center">
           Access is limited to registered Fatbear Agency employees.
         </p>

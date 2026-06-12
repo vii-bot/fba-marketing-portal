@@ -104,24 +104,6 @@ function AttendanceForm() {
         <p className="text-sm text-amber-200/80">No request is considered approved until management approval is received through the system.</p>
       </div>
 
-      {/* Work schedule policy */}
-      <div className="card rounded-xl p-5 mb-5 space-y-3">
-        <div>
-          <h4 className="text-xs uppercase tracking-widest text-indigo-400 font-semibold mb-1">Core Hours</h4>
-          <p className="text-sm text-slate-300">Core hours are <strong className="text-slate-200">9:00 AM – 5:00 PM CST, Monday to Friday</strong>.</p>
-        </div>
-        <div className="border-t border-slate-700/50 pt-3">
-          <h4 className="text-xs uppercase tracking-widest text-indigo-400 font-semibold mb-1">6th Day / Saturday</h4>
-          <p className="text-sm text-slate-300">
-            Saturday is treated as an async operations day — there is no required virtual attendance by default. It&apos;s used for content
-            research, planning ahead, preparing operations for the coming week, and as a built-in buffer for unfinished tasks. Saturday
-            may serve as a rest day if your operations are fully in order. However, attendance may be required if tasks were incomplete
-            or errors occurred during the week, additional cleanup or correction is needed, or you&apos;re specifically instructed by
-            management to attend or complete work.
-          </p>
-        </div>
-      </div>
-
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1 mb-6">
         {(Object.entries(TAB_LABELS) as [TabKey, string][]).map(([k, v]) => (

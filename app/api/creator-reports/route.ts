@@ -74,11 +74,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { creatorId, accountUsername, department, reportType, followerCount, summary } = body;
 
-  if (!creatorId || !accountUsername || !department || !reportType || !summary) {
-    return NextResponse.json({ error: "Creator, account, department, report type, and summary are required." }, { status: 400 });
-  }
-  if (followerCount === undefined || followerCount === null || followerCount === "") {
-    return NextResponse.json({ error: "Current follower count is required." }, { status: 400 });
+  if (!creatorId || !accountUsername || !department || !reportType) {
+    return NextResponse.json({ error: "Creator, account, department, and report type are required." }, { status: 400 });
   }
 
   const creator = await prisma.creator.findUnique({ where: { id: creatorId } });
@@ -95,12 +92,17 @@ export async function POST(req: NextRequest) {
       department,
       reportType,
       status,
-      followerCount: parseInt(followerCount) || 0,
+      followerCount: followerCount === undefined || followerCount === null || followerCount === "" ? null : parseInt(followerCount) || 0,
       followerChange: body.followerChange || null,
-      summary,
+      summary: summary || null,
       highlights: (body.highlights ?? []) as Prisma.InputJsonValue,
+      metrics: (body.metrics ?? null) as Prisma.InputJsonValue,
+      trafficNotes: body.trafficNotes || null,
       whatsWorking: body.whatsWorking || null,
+      whatsNotWorking: body.whatsNotWorking || null,
+      needsTesting: body.needsTesting || null,
       actionItems: body.actionItems || null,
+      recommendedFocus: body.recommendedFocus || null,
       additionalNotes: body.additionalNotes || null,
       links: (body.links ?? []) as Prisma.InputJsonValue,
       submittedBy: user.email,
@@ -140,11 +142,19 @@ export async function PATCH(req: NextRequest) {
   const data: Record<string, unknown> = {};
 
   if (isOwner && ["Draft", "Needs Revision"].includes(existing.status)) {
-    const editable = ["accountUsername", "followerCount", "followerChange", "summary", "whatsWorking", "actionItems", "additionalNotes"] as const;
+    const editable = [
+      "accountUsername", "followerCount", "followerChange", "summary", "trafficNotes",
+      "whatsWorking", "whatsNotWorking", "needsTesting", "actionItems", "recommendedFocus", "additionalNotes",
+    ] as const;
     for (const key of editable) {
-      if (body[key] !== undefined) data[key] = key === "followerCount" ? (parseInt(body[key]) || 0) : body[key];
+      if (body[key] !== undefined) {
+        data[key] = key === "followerCount"
+          ? (body[key] === null || body[key] === "" ? null : parseInt(body[key]) || 0)
+          : body[key];
+      }
     }
     if (body.highlights !== undefined) data.highlights = body.highlights as Prisma.InputJsonValue;
+    if (body.metrics !== undefined) data.metrics = body.metrics as Prisma.InputJsonValue;
     if (body.links !== undefined) data.links = body.links as Prisma.InputJsonValue;
     if (body.status === "Draft" || body.status === "Submitted") data.status = body.status;
   }

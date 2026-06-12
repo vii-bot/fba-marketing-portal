@@ -28,9 +28,9 @@ const MAIN_NAV: NavItem[] = [
 ];
 
 // Shown to anyone canAccessInternalDocs() authorizes (Admin, Executive,
-// Department Head/Manager/Account Manager — the latter only see pages
-// explicitly granted to their role). For admins it's folded directly into
-// ADMIN_NAV; non-admins with access get it as a standalone item below.
+// Department Head/Manager — the latter only see pages explicitly granted to
+// their role). For admins it's folded directly into ADMIN_NAV; non-admins
+// with access get it as a standalone item below.
 const INTERNAL_DOCS_NAV: NavItem = {
   href: "/admin/internal-docs",
   label: "Internal Documentation",
@@ -54,8 +54,8 @@ const ADMIN_NAV: NavItem[] = [
   INTERNAL_DOCS_NAV,
 ];
 
-// Department Heads/Managers/Account Managers don't get the full admin
-// dashboard — just a scoped view of their own department's employees.
+// Department Heads/Managers don't get the full admin dashboard — just a
+// scoped view of their own department's employees and tasks.
 const DEPT_MANAGER_NAV: NavItem[] = [
   {
     href: "/admin/employees",
@@ -63,11 +63,18 @@ const DEPT_MANAGER_NAV: NavItem[] = [
     icon: <Users2 size={16} />,
     match: (p) => p.startsWith("/admin/employees"),
   },
+  {
+    href: "/admin/tasks",
+    label: "Team Productivity",
+    icon: <ListTodo size={16} />,
+    match: (p) => p.startsWith("/admin/tasks"),
+  },
 ];
 
 // Shown to anyone canManageCreatorReports() authorizes (Admin, Executive,
-// Department Head/Manager, Account Manager) — added separately since these
-// roles fall outside both ADMIN_NAV and DEPT_MANAGER_NAV's local role checks.
+// Department Head/Manager, Account Manager) — added separately since Account
+// Managers fall outside both ADMIN_NAV and DEPT_MANAGER_NAV's local role
+// checks (they're no longer part of MANAGER_ROLES/isDepartmentManager).
 const CREATOR_REPORTS_NAV: NavItem = {
   href: "/admin/creator-reports",
   label: "View Creator Reports",

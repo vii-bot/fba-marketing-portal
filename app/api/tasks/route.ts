@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isAdmin } from "@/lib/permissions";
+import { isAdmin, isDepartmentManager, isSuperUser } from "@/lib/permissions";
 import { TASK_STATUSES } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
@@ -16,18 +17,33 @@ export async function GET(req: NextRequest) {
   const category   = searchParams.get("category") ?? "";
   const department = searchParams.get("department") ?? "";
   const email      = searchParams.get("email") ?? "";
+  const teamView   = searchParams.get("view") === "team";
 
   const admin = isAdmin(user);
+  const isSuper = admin || isSuperUser(user);
+  const manager = isDepartmentManager(user);
+
+  // "My Taskboard" (no view=team) always shows only the signed-in user's own
+  // tasks, even for admins. "Team Productivity Admin" (view=team) gives
+  // admins/super users platform-wide visibility, Department Heads/Managers a
+  // view scoped to their own department, and falls back to "own tasks" for
+  // anyone else who hits this with view=team.
+  let scopeFilter: Prisma.TaskWhereInput;
+  if (teamView && isSuper) {
+    scopeFilter = { ...(email && { email: { equals: email, mode: "insensitive" } }) };
+  } else if (teamView && manager) {
+    scopeFilter = { department: user.department ?? "__none__" };
+  } else {
+    scopeFilter = { email: { equals: user.email, mode: "insensitive" } };
+  }
 
   const tasks = await prisma.task.findMany({
     where: {
-      ...(admin
-        ? { ...(email && { email: { equals: email, mode: "insensitive" } }) }
-        : { email: { equals: user.email, mode: "insensitive" } }),
+      ...scopeFilter,
       ...(date && { date: new Date(date) }),
       ...(status && { status }),
       ...(category && { category }),
-      ...(admin && department && { department }),
+      ...(teamView && isSuper && department && { department }),
     },
     orderBy: { createdAt: "asc" },
   });

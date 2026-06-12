@@ -24,6 +24,14 @@ export function isAdmin(user: PermUser): boolean {
   return (user as any).role === "admin" || isExecutive(user);
 }
 
+// vii@fatbearagency.com always has full, platform-wide visibility on the
+// Team Productivity Admin dashboard, regardless of role/department.
+const SUPER_USER_EMAILS = ["vii@fatbearagency.com"];
+
+export function isSuperUser(user: PermUser): boolean {
+  return SUPER_USER_EMAILS.includes((user.email ?? "").toLowerCase());
+}
+
 // ── Department access ─────────────────────────────────────────────────────────
 
 export function canViewDepartment(user: PermUser, department: string): boolean {
@@ -65,8 +73,8 @@ export function canViewEmployee(
 }
 
 // Admins/Executives can browse the full Employee Database across all
-// departments; Department Heads/Managers/Account Managers can browse their
-// own department's employees only. Regular employees have no access.
+// departments; Department Heads/Managers can browse their own department's
+// employees only. Account Managers and regular employees have no access.
 export function canViewEmployeeDatabase(user: PermUser): boolean {
   return isAdmin(user) || isDepartmentManager(user);
 }
@@ -127,9 +135,10 @@ export function canApproveLeave(user: PermUser): boolean {
 // ── Contractor Change Requests ────────────────────────────────────────────────
 
 // Authorized roles for the FBA Contractor Change Request form (bugs.md
-// Phase 6): Admin, Department Head, Department Manager, Account Manager,
-// Executive, and TA/Payroll Manager (an HR/payroll role outside the normal
-// MANAGER_ROLES department-management chain).
+// Phase 6): Admin, Department Head, Department Manager, Executive, and
+// TA/Payroll Manager (an HR/payroll role outside the normal MANAGER_ROLES
+// department-management chain). Account Managers are scoped to Creators/
+// Creator Reports only and do not get this.
 export function canManageContractors(user: PermUser): boolean {
   return isAdmin(user) || isDepartmentManager(user) || user.role === "TA/Payroll Manager";
 }
@@ -139,20 +148,22 @@ export function canManageContractors(user: PermUser): boolean {
 // Who sees the Creator Reports admin dashboard (bugs.md Phase 10): Admins/
 // Executives (all departments), Department Heads/Managers (their own
 // department), and Account Managers (Internal + Creator reports
-// platform-wide). All three are covered by isAdmin || isDepartmentManager —
-// the dashboard's API route applies the per-role department/visibility
-// scoping on top of this gate.
+// platform-wide). Account Managers are called out explicitly since they're
+// no longer part of MANAGER_ROLES/isDepartmentManager — this is the one
+// admin-tier area they retain access to (alongside My Creators). The
+// dashboard's API route applies the per-role department/visibility scoping
+// on top of this gate.
 export function canManageCreatorReports(user: PermUser): boolean {
-  return isAdmin(user) || isDepartmentManager(user);
+  return isAdmin(user) || isDepartmentManager(user) || user.role === "Account Manager";
 }
 
 // ── Internal Documentation CMS ────────────────────────────────────────────────
 
 // Who can access the Internal Documentation area (bugs.md Phase 13):
-// Admins/Executives always; Department Heads/Managers/Account Managers may
-// open the area, but only see Published pages whose `visibility` includes
-// their role ("if permission is granted" — granted per page via
-// DocPage.visibility, not a blanket toggle). Regular employees have no access.
+// Admins/Executives always; Department Heads/Managers may open the area, but
+// only see Published pages whose `visibility` includes their role ("if
+// permission is granted" — granted per page via DocPage.visibility, not a
+// blanket toggle). Account Managers and regular employees have no access.
 export function canAccessInternalDocs(user: PermUser): boolean {
   return isAdmin(user) || isDepartmentManager(user);
 }

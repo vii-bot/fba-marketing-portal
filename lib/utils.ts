@@ -45,7 +45,6 @@ export const EXECUTIVE_ROLES = [
 export const MANAGER_ROLES = [
   "Department Head",
   "Department Manager",
-  "Account Manager",
 ];
 
 // ── Fatbear Agency official roles ─────────────────────────────────────────────
@@ -74,12 +73,20 @@ export const DEPARTMENTS = [
   "Instagram",
   "Reddit",
   "X",
+  "Others",
 ];
 
 // Departments currently in active operation — used for assigning new
 // employees. DEPARTMENTS (above) remains the full list for filters so
 // existing employees in legacy departments stay visible/searchable.
 export const ACTIVE_DEPARTMENTS = ["Instagram", "X", "Reddit"];
+
+// Departments assignable to an employee in the Employee Database —
+// ACTIVE_DEPARTMENTS plus a catch-all "Others" for Executives, Account
+// Managers, and other roles not tied to a specific platform. Kept separate
+// from ACTIVE_DEPARTMENTS so "Others" doesn't appear in Creator Reports
+// department filters.
+export const EMPLOYEE_DEPARTMENTS = [...ACTIVE_DEPARTMENTS, "Others"];
 
 // ── LMS tier system ───────────────────────────────────────────────────────────
 

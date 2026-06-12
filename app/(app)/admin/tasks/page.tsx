@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ListTodo } from "lucide-react";
+import { useSession } from "@/lib/auth-client";
+import type { SessionUser } from "@/lib/auth-client";
+import { isAdmin, isDepartmentManager, isSuperUser } from "@/lib/permissions";
 import { DEPARTMENTS, TASK_STATUSES, TASK_CATEGORIES, formatMinutes, todayLocalDate } from "@/lib/utils";
 
 interface TaskRecord {
@@ -21,17 +24,23 @@ const formatTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—";
 
 export default function AdminTaskboardPage() {
+  const { data: session } = useSession();
+  const user = session?.user as (SessionUser & { department?: string | null }) | undefined;
+  const isSuper   = user ? (isAdmin({ role: user.role, email: user.email }) || isSuperUser({ role: user.role, email: user.email })) : false;
+  const isManager = user ? isDepartmentManager({ role: user.role, email: user.email }) : false;
+
   const [date, setDate]             = useState(todayLocalDate());
   const [department, setDepartment] = useState("All");
   const [category, setCategory]     = useState("All");
   const [status, setStatus]         = useState("All");
+  const [search, setSearch]         = useState("");
   const [tasks, setTasks]           = useState<TaskRecord[]>([]);
   const [loading, setLoading]       = useState(true);
 
   const load = async () => {
     setLoading(true);
-    const params = new URLSearchParams({ date });
-    if (department !== "All") params.set("department", department);
+    const params = new URLSearchParams({ date, view: "team" });
+    if (isSuper && department !== "All") params.set("department", department);
     if (category !== "All") params.set("category", category);
     if (status !== "All") params.set("status", status);
     const res = await fetch(`/api/tasks?${params.toString()}`);
@@ -39,22 +48,28 @@ export default function AdminTaskboardPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [date, department, category, status]);
+  useEffect(() => { load(); }, [date, department, category, status, isSuper]);
+
+  const filteredTasks = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return tasks;
+    return tasks.filter(t => t.name.toLowerCase().includes(q) || t.email.toLowerCase().includes(q));
+  }, [tasks, search]);
 
   const stats = useMemo(() => {
-    const finished = tasks.filter(t => t.status === "Finished");
+    const finished = filteredTasks.filter(t => t.status === "Finished");
     return {
-      total: tasks.length,
-      pending: tasks.filter(t => t.status === "Pending").length,
-      inProgress: tasks.filter(t => t.status === "In Progress").length,
+      total: filteredTasks.length,
+      pending: filteredTasks.filter(t => t.status === "Pending").length,
+      inProgress: filteredTasks.filter(t => t.status === "In Progress").length,
       finished: finished.length,
       totalMinutes: finished.reduce((sum, t) => sum + (t.totalMinutes ?? 0), 0),
     };
-  }, [tasks]);
+  }, [filteredTasks]);
 
   const byEmployee = useMemo(() => {
     const map = new Map<string, { name: string; department: string; pending: number; inProgress: number; finished: number; totalMinutes: number }>();
-    for (const t of tasks) {
+    for (const t of filteredTasks) {
       const key = t.email;
       if (!map.has(key)) map.set(key, { name: t.name, department: t.department, pending: 0, inProgress: 0, finished: 0, totalMinutes: 0 });
       const e = map.get(key)!;
@@ -63,14 +78,20 @@ export default function AdminTaskboardPage() {
       if (t.status === "Finished") { e.finished++; e.totalMinutes += t.totalMinutes ?? 0; }
     }
     return Array.from(map.entries()).map(([email, v]) => ({ email, ...v }));
-  }, [tasks]);
+  }, [filteredTasks]);
 
   return (
     <div className="w-full max-w-6xl mx-auto">
       <div className="module-header rounded-2xl p-8 mb-6">
         <p className="text-xs uppercase tracking-wider text-indigo-400 mb-2">Team Productivity</p>
         <h2 className="font-bold text-slate-100 mb-1" style={{ fontSize: 23 }}>Team Productivity Admin</h2>
-        <p className="text-sm text-slate-400 opacity-70">Review employee tasks and time spent for a given day.</p>
+        <p className="text-sm text-slate-400 opacity-70">
+          {isSuper
+            ? "Review employee tasks and time spent for a given day."
+            : isManager
+              ? `Reviewing tasks for the ${user?.department ?? "your"} department.`
+              : "Showing your own tasks."}
+        </p>
       </div>
 
       {/* Filters */}
@@ -79,13 +100,15 @@ export default function AdminTaskboardPage() {
           <label className="sf-label">Date</label>
           <input type="date" className="sf-input !w-auto" value={date} onChange={e => setDate(e.target.value)} />
         </div>
-        <div>
-          <label className="sf-label">Department</label>
-          <select className="sf-input !w-auto" value={department} onChange={e => setDepartment(e.target.value)}>
-            <option>All</option>
-            {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
-          </select>
-        </div>
+        {isSuper && (
+          <div>
+            <label className="sf-label">Department</label>
+            <select className="sf-input !w-auto" value={department} onChange={e => setDepartment(e.target.value)}>
+              <option>All</option>
+              {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <label className="sf-label">Category</label>
           <select className="sf-input !w-auto" value={category} onChange={e => setCategory(e.target.value)}>
@@ -99,6 +122,16 @@ export default function AdminTaskboardPage() {
             <option>All</option>
             {TASK_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="sf-label">Search Employee</label>
+          <input
+            type="text"
+            className="sf-input !w-auto"
+            placeholder="Name or email…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
       </div>
 
@@ -145,14 +178,14 @@ export default function AdminTaskboardPage() {
         <h4 className="font-semibold text-slate-200 text-sm mb-4">All Tasks</h4>
         {loading ? (
           <p className="text-sm text-slate-500">Loading…</p>
-        ) : tasks.length === 0 ? (
+        ) : filteredTasks.length === 0 ? (
           <div className="text-center py-8 text-slate-500"><ListTodo size={32} className="mx-auto mb-2 opacity-25" /><p className="text-sm">No tasks logged for this date.</p></div>
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead><tr><th>Employee</th><th>Task</th><th>Category</th><th>Status</th><th>Start</th><th>Finish</th><th>Total</th><th>Notes</th></tr></thead>
               <tbody>
-                {tasks.map(t => (
+                {filteredTasks.map(t => (
                   <tr key={t.id}>
                     <td>
                       <div className="text-slate-200 text-xs">{t.name}</div>

@@ -23,13 +23,14 @@ export async function GET(req: NextRequest) {
   const to              = searchParams.get("to") ?? "";
 
   const admin = isAdmin(user);
+  const accountManager = user.role === "Account Manager";
   const manager = isDepartmentManager(user);
 
   let scopeFilter: Prisma.CreatorReportWhereInput = {};
-  if (!admin) {
-    if (manager && user.role !== "Account Manager") {
+  if (!admin && !accountManager) {
+    if (manager) {
       scopeFilter = { department: user.department ?? "__none__" };
-    } else if (!manager) {
+    } else {
       const assigned = await prisma.creator.findMany({
         where: { assignedPageRunners: { has: user.email } },
         select: { id: true },
@@ -41,8 +42,8 @@ export async function GET(req: NextRequest) {
         ],
       };
     }
-    // Account Managers (manager && role === "Account Manager") see everything, like admins.
   }
+  // Admins and Account Managers see everything, platform-wide.
 
   const reports = await prisma.creatorReport.findMany({
     where: {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { EmailUsernameInput } from "@/components/ui/EmailUsernameInput";
-import { EMPLOYEE_ROLES, DEPARTMENTS, ACTIVE_DEPARTMENTS, SCHEDULE_SHIFTS, formatDate } from "@/lib/utils";
+import { EMPLOYEE_ROLES, DEPARTMENTS, EMPLOYEE_DEPARTMENTS, SCHEDULE_SHIFTS, formatDate } from "@/lib/utils";
 import { getEmployeeStatus } from "@/lib/employee-status";
 import { isAdmin } from "@/lib/permissions";
 import { useSession } from "@/lib/auth-client";
@@ -233,7 +233,7 @@ export default function EmployeesPage() {
                 <div><label className="sf-label">Name *</label><input className="sf-input" value={form.name} onChange={e => setF("name", e.target.value)} /></div>
                 <div><label className="sf-label">Email *</label><EmailUsernameInput required value={form.email} onChange={v => setF("email", v)} /></div>
                 <div><label className="sf-label">Role *</label><select className="sf-input" value={form.role} onChange={e => setF("role", e.target.value)}>{EMPLOYEE_ROLES.map(r => <option key={r}>{r}</option>)}</select></div>
-                <div><label className="sf-label">Department</label><select className="sf-input" value={form.department} onChange={e => setF("department", e.target.value)}>{ACTIVE_DEPARTMENTS.map(d => <option key={d}>{d}</option>)}</select></div>
+                <div><label className="sf-label">Department</label><select className="sf-input" value={form.department} onChange={e => setF("department", e.target.value)}>{EMPLOYEE_DEPARTMENTS.map(d => <option key={d}>{d}</option>)}</select></div>
                 <div><label className="sf-label">Start Date</label><input className="sf-input" type="date" value={form.startDate} onChange={e => setF("startDate", e.target.value)} /></div>
                 <div><label className="sf-label">Status</label><select className="sf-input" value={form.status} onChange={e => setF("status", e.target.value)}>{["Active","Inactive","On Leave","Terminated"].map(s => <option key={s}>{s}</option>)}</select></div>
                 <div><label className="sf-label">Discord Username</label><input className="sf-input" value={form.discordUsername} onChange={e => setF("discordUsername", e.target.value)} placeholder="@handle" /></div>
